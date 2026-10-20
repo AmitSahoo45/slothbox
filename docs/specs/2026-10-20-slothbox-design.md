@@ -1062,12 +1062,12 @@ Seeded on first run. Users can edit, rename or add more on the Categories page (
 | `sun-tint` | `#FBEFD9` | `#3A2D14` | Needs review backgrounds |
 | `rain` | `#2F6690` | `#7FB2DA` | Screenshots, information |
 | `rain-tint` | `#DCE9F3` | `#1A2D3D` | Information backgrounds |
-| `ember` | `#B3423A` | `#E57A70` | Errors, destructive actions |
+| `ember` | `#B1423A` | `#E57A70` | Errors, destructive actions |
 | `ember-tint` | `#F8E1DE` | `#3B1E1B` | Error backgrounds |
 
 - **Text on primary buttons:** `#FFFFFF` on `moss` (light); `#0F1A14` on `moss` (dark).
 - **Type colours on chips:** receipt = sun, screenshot = rain, document = moss, other = ink-muted on `leaf-raised`.
-- **Contrast:** every text pair above was checked approximately against WCAG AA (4.5:1) in both themes. Recheck with a contrast checker during build.
+- **Contrast:** text pairs must meet WCAG AA (4.5:1) in both themes. The Track U check corrected light `ember` from `#B3423A` (4.48:1 on `ember-tint`) to `#B1423A` (4.53:1). The other text/tint and primary-button pairs pass in both themes.
 
 **Typography**
 - **Families:** Atkinson Hyperlegible Next for all UI text; Atkinson Hyperlegible Mono only for file names and paths.
@@ -1133,7 +1133,7 @@ Seeded on first run. Users can edit, rename or add more on the Categories page (
   --color-sun-tint: #FBEFD9;
   --color-rain: #2F6690;
   --color-rain-tint: #DCE9F3;
-  --color-ember: #B3423A;
+  --color-ember: #B1423A;
   --color-ember-tint: #F8E1DE;
 
   --radius-chip: 4px;
@@ -1531,6 +1531,10 @@ Opens from the right, 440 px wide, over any page.
 - **Error toasts** stay until dismissed.
 - **Any toast after a move** includes [Undo].
 
+**Track U integration note:** the fixed Track 0 `StatusDto` has no drive-full
+signal. That banner awaits an explicit contract field; the UI does not infer it
+from a free-text service message.
+
 ### 7.5 Components
 
 Built on Radix Primitives (Dialog, DropdownMenu, Popover, Select, Switch, Tabs, Toast, Tooltip) for behaviour and accessibility, styled only with the tokens above. No pre-themed component kit is used, so the look stays SlothBox's own.
@@ -1632,6 +1636,15 @@ Tray notifications appear only when a file goes to Needs review. Clicking one op
 - **Take a photo:** `accept="image/*" capture="environment"`.
 - **Choose files:** `accept="image/*,application/pdf" multiple`.
 - Uploads go one at a time with per-file progress.
+- The build emits one self-contained `wwwroot/phone/index.html`. CSS, colour
+  tokens and script are inline; there are no font, stylesheet or script requests
+  on the isolated phone port.
+- Each upload posts multipart field `file` to `location.pathname + '/upload'`.
+- A 401 stops the remaining queue and disables file selection. Other failures
+  leave that file marked as failed and allow the queue to continue. Failures
+  are announced through an alert; progress ticks stay quiet. The received count
+  includes only acknowledged uploads. If any files failed, the summary asks
+  the user to choose them again rather than saying the page can be closed.
 
 **Messages**
 - **After upload:** "Received 3 files. You can close this page."
@@ -1687,9 +1700,16 @@ src/SlothBox.Web/
 **Development**
 - Run `SlothBox.App`, which serves the API on 5080.
 - Run `npm run dev`, which serves Vite on 5173 and proxies `/api` and `/events` to 5080 with `changeOrigin: true`, so the Host check passes.
+- `npm run dev:mock` starts the same dashboard with MSW's browser worker and
+  synthetic fixtures. Pause/Resume state persists within the page session and
+  the mock SSE connection stays open. API types are generated before either
+  development command. The worker is served only by development middleware;
+  production bundles contain no mock handlers, fixtures or worker.
 
 **Build**
 - `npm run build` writes to `src/SlothBox.Server/wwwroot`, which is git-ignored.
+- That same build emits both `index.html` and `phone/index.html`, so clearing
+  the output directory never removes a separately built phone page.
 - `SlothBox.Server` embeds `wwwroot/**` as resources and serves it through `ManifestEmbeddedFileProvider`. The published single `.exe` bundles Server, so it contains the UI (A19).
 - Unknown non-API routes fall back to `index.html`.
 
