@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { useNavigate } from 'react-router-dom'
+import { useLocation, useNavigate } from 'react-router-dom'
 import * as Dialog from '@radix-ui/react-dialog'
 import { Keyboard, X } from 'lucide-react'
 import { Button } from '../components/Button'
@@ -9,6 +9,7 @@ export function Shortcuts() {
   const [open, setOpen] = useState(false)
   const returnFocus = useRef<HTMLElement | null>(null)
   const navigate = useNavigate()
+  const { pathname } = useLocation()
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       const target = event.target
@@ -21,7 +22,7 @@ export function Shortcuts() {
         setOpen(true)
       } else if (event.key === '/') {
         event.preventDefault()
-        navigate('/search')
+        if (pathname !== '/search') navigate('/search')
         requestAnimationFrame(() => {
           (document.querySelector<HTMLElement>('[data-search-input]') ?? document.getElementById('page-title'))?.focus()
         })
@@ -29,7 +30,7 @@ export function Shortcuts() {
     }
     document.addEventListener('keydown', onKey)
     return () => document.removeEventListener('keydown', onKey)
-  }, [navigate, open])
+  }, [navigate, open, pathname])
   return <Dialog.Root open={open} onOpenChange={next => {
     if (next) returnFocus.current = document.activeElement as HTMLElement
     setOpen(next)

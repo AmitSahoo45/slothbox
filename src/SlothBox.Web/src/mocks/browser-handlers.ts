@@ -3,9 +3,10 @@ import { handlers } from './handlers'
 import { status } from './fixtures'
 import type { MockEvent, Schema } from '../api/types'
 import { createBatch2Handlers } from './batch2-handlers'
+import { createBatch3Handlers } from './batch3-handlers'
 
-export function createBrowserHandlers() {
-  let current: Schema['StatusDto'] = structuredClone(status)
+export function createBrowserHandlers(options: { setupComplete?: boolean } = {}) {
+  let current: Schema['StatusDto'] = { ...structuredClone(status), setupComplete: options.setupComplete ?? true }
   const subscribers = new Set<ReadableStreamDefaultController<Uint8Array>>()
   const encoder = new TextEncoder()
   const statusEvent = () => encoder.encode(`event: status.changed\ndata: ${JSON.stringify(current)}\n\n`)
@@ -53,6 +54,7 @@ export function createBrowserHandlers() {
       } })
     }),
     ...createBatch2Handlers(publish),
+    ...createBatch3Handlers(() => current, status => { current = status; publish({ event: 'status.changed', data: current }) }, publish),
     ...handlers,
   ]
 }

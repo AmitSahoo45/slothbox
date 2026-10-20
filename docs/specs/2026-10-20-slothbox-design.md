@@ -1251,6 +1251,12 @@ Three steps, in order. Moving back is allowed until "Finish setup".
   - "Finish anyway" is a quiet link that finishes with the queue paused.
   - The checks re-run every 10 s.
 
+**Track U contract boundary:** there is no separate output-folder validation
+operation in the fixed contract. Setup checks the absolute path and selected
+folder overlaps locally; complete output-folder validation remains with
+`POST /api/setup/complete`. Completed setup redirects to Today. A dedicated
+output-folder check is deferred until the contract supports it.
+
 #### 7.4.2 Today (`/`)
 
 ```
@@ -1442,6 +1448,12 @@ One file at a time.
 - **Overflow menu:** Rename label, Stop watching. Stopping keeps already-filed files where they are.
 
 **Missing folder:** the row shows "Folder not found" with [Locate] and [Remove].
+
+**Track U contract boundary:** the output folder's Open action and a missing
+folder's Locate action are deferred. The fixed contract has file-ID open/reveal
+operations and folder updates for label, mode and enabled state, but no operation
+to open the output root or replace a watched folder's path. Remove remains
+available and confirms that already-filed files stay in place.
 
 **Phone page block**
 - **QR code** for the phone URL.
@@ -1715,6 +1727,15 @@ src/SlothBox.Web/
   Skip, refile and Undo retain their synthetic state for the page session and
   publish SSE updates. Open and Show in folder acknowledge the request without
   accessing local files.
+- Search and the monthly receipt ledger use those same synthetic files. Folder
+  changes, phone-link rotation and setup completion persist within the page
+  session. Tidy progress is simulated through SSE. Open `/setup?mockSetup` in
+  `dev:mock` to start the incomplete-setup fixture; it uses path fields and never
+  opens native dialogs or accesses real folders. Its QR images are placeholders.
+- Known development limitation with pinned MSW 3.0.3: repeated full-page reloads
+  can report a ServiceWorker update "Not found" rejection while the previous
+  page unregisters its worker. The tested page flows still work; this warning
+  is confined to `dev:mock`, and the production build contains no worker.
 
 **Build**
 - `npm run build` writes to `src/SlothBox.Server/wwwroot`, which is git-ignored.

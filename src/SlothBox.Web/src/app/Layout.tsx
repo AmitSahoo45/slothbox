@@ -11,6 +11,10 @@ import { Shortcuts } from './Shortcuts'
 import { Today } from '../pages/Today/Today'
 import { Review } from '../pages/Review/Review'
 import { FileDrawer } from '../components/FileDrawer/FileDrawer'
+import { Search } from '../pages/Search/Search'
+import { Receipts } from '../pages/Receipts/Receipts'
+import { Setup } from '../pages/Setup/Setup'
+import { Folders } from '../pages/Folders/Folders'
 
 export function Layout() {
   const status = useQuery(statusQuery)
@@ -42,6 +46,10 @@ export function Layout() {
       <div className="page-heading"><h1 id="page-title" tabIndex={-1}>{title}</h1><Shortcuts /></div>
       {pathname === '/' && status.data?.setupComplete && <Today />}
       {pathname === '/review' && status.data?.setupComplete && <Review />}
+      {pathname === '/search' && status.data?.setupComplete && <Search />}
+      {pathname === '/receipts' && status.data?.setupComplete && <Receipts />}
+      {pathname === '/folders' && status.data?.setupComplete && <Folders />}
+      {isSetup && <Setup />}
     </main>
     <FileDrawer />
   </div>

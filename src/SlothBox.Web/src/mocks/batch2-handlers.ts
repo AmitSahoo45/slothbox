@@ -48,6 +48,22 @@ export function createBatch2Handlers(publish: (event: MockEvent) => void) {
   const protection = (request: Request) => request.headers.get('X-SlothBox') === '1' ? null
     : HttpResponse.json({ title: 'Missing X-SlothBox header', status: 403 }, { status: 403 })
   const ordered = () => [...files.values()].map(item => item.file).sort((a, b) => b.at.localeCompare(a.at))
+  const ledger = (month: string): Schema['ReceiptsDto'] => {
+    const items = [...files.values()].filter(file => file.file.status === 'filed' && file.file.type === 'receipt' && file.receipt?.date?.startsWith(month))
+      .map(file => ({ ...file.receipt!, fileId: file.file.fileId, categoryId: file.categoryId, category: file.file.category }))
+    const totals = new Map<string, { currency: string; amount: number; count: number }>()
+    const groups = new Map<string, Schema['CategoryTotalDto']>()
+    for (const item of items) {
+      if (item.amount == null || !item.currency) continue
+      const total = totals.get(item.currency) ?? { currency: item.currency, amount: 0, count: 0 }
+      total.amount += Number(item.amount); total.count++; totals.set(item.currency, total)
+      if (item.categoryId == null) continue
+      const key = `${item.currency}/${item.categoryId}`
+      const group = groups.get(key) ?? { categoryId: item.categoryId, category: item.category, currency: item.currency, amount: 0 }
+      group.amount = Number(group.amount) + Number(item.amount); groups.set(key, group)
+    }
+    return { month, items, totals: [...totals.values()], categories: [...groups.values()] }
+  }
   const undo = (id: string): Schema['UndoResultDto'] => {
     const details = files.get(id)
     if (!details?.file.canUndo) return { fileId: id, success: false, restoredPath: null, reason: 'This file has no action to undo.' }
@@ -60,6 +76,25 @@ export function createBatch2Handlers(publish: (event: MockEvent) => void) {
     return { fileId: id, success: true, restoredPath: details.originalPath, reason: null }
   }
   return [
+    http.get('*/api/search', ({ request }) => {
+      const params = new URL(request.url).searchParams
+      const q = params.get('q')?.trim().toLowerCase()
+      const selected = q ? [...files.values()].filter(file => {
+        const date = localDate(new Date(file.file.at))
+        return file.file.status !== 'undone' && `${file.file.title} ${file.file.newName} ${file.caption}`.toLowerCase().includes(q)
+          && (!params.get('type') || file.file.type === params.get('type'))
+          && (!params.get('categoryId') || String(file.categoryId) === params.get('categoryId'))
+          && (!params.get('from') || date >= params.get('from')!) && (!params.get('to') || date <= params.get('to')!)
+      }) : []
+      return HttpResponse.json({ items: selected.map((file, index) => ({ file, score: 1 / (index + 1), matchedWords: index % 3 !== 1, matchedMeaning: index % 3 !== 0 })) })
+    }),
+    http.get('*/api/receipts', ({ request }) => HttpResponse.json(ledger(new URL(request.url).searchParams.get('month') || localDate(new Date()).slice(0, 7)))),
+    http.get('*/api/receipts/export.csv', ({ request }) => {
+      const month = new URL(request.url).searchParams.get('month') || localDate(new Date()).slice(0, 7)
+      const quote = (value: unknown) => `"${String(value ?? '').replaceAll('"', '""')}"`
+      const rows = ledger(month).items.map(item => [item.date, item.vendor, item.amount, item.currency, item.category, item.paymentMethod].map(quote).join(','))
+      return HttpResponse.text(['date,vendor,amount,currency,category,paid_by', ...rows].join('\r\n'), { headers: { 'Content-Type': 'text/csv', 'Content-Disposition': 'attachment; filename="receipts.csv"' } })
+    }),
     http.get('*/api/categories', () => HttpResponse.json(categories)),
     http.get('*/api/activity', ({ request }) => {
       const url = new URL(request.url)

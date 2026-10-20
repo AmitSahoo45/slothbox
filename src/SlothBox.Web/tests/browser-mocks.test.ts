@@ -84,3 +84,33 @@ test('browser mocks refuse incomplete receipt conversion and keep statistics ava
   expect(stats.status).toBe(200)
   expect((await stats.json()).filesFiled).toBeGreaterThan(0)
 })
+
+test('browser search and receipt month filters use the same files as the drawer', async () => {
+  server.use(...createBrowserHandlers())
+  const search = await (await fetch(`${base}/api/search?q=Sample&type=document`)).json()
+  expect(search.items.length).toBeGreaterThan(0)
+  expect(search.items.every((hit: Schema['SearchHitDto']) => hit.file.file.type === 'document')).toBe(true)
+  expect((await (await fetch(`${base}/api/search?q=unmatched-xyz`)).json()).items).toEqual([])
+  const month = new Date().toLocaleDateString('en-CA').slice(0, 7)
+  const ledger = await (await fetch(`${base}/api/receipts?month=${month}`)).json()
+  expect(ledger.month).toBe(month)
+  const empty = await (await fetch(`${base}/api/receipts?month=2000-01`)).json()
+  expect(empty.items).toEqual([])
+})
+
+test('browser folder and setup mutations persist and rotation changes the QR with the URL', async () => {
+  server.use(...createBrowserHandlers())
+  const post = async (path: string, body?: unknown) => (await fetch(`${base}/api/${path}`, {
+    method: 'POST', headers: { 'X-SlothBox': '1', 'Content-Type': 'application/json' },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  })).json()
+  const added = await post('folders', { path: 'D:\\Synthetic-Input', mode: 'move', tidyExisting: false })
+  expect((await (await fetch(`${base}/api/folders`)).json()).some((folder: Schema['FolderDto']) => folder.id === added.id)).toBe(true)
+  expect(await post('folders/check', { path: 'D:\\' })).toMatchObject({ accepted: false })
+  const phone = await (await fetch(`${base}/api/phone`)).json()
+  const rotated = await post('phone/rotate')
+  expect(rotated.url).not.toBe(phone.url)
+  expect(rotated.qrSvg).not.toBe(phone.qrSvg)
+  await post('setup/complete', { outputRoot: 'D:\\Synthetic-Filed', folders: [], finishAnyway: true })
+  expect(await (await fetch(`${base}/api/status`)).json()).toMatchObject({ paused: true, setupComplete: true })
+})

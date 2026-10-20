@@ -44,6 +44,20 @@ export async function request<M extends Method, P extends JsonPath<M>>(
     credentials: 'same-origin',
     body: options.body === undefined ? undefined : JSON.stringify(options.body),
   })
+  await ensureOk(response)
+  return response.json()
+}
+
+export async function receiptCsv(month: string) {
+  const query: ParametersFor<paths['/api/receipts/export.csv']['get'], 'query'> = { month }
+  const response = await fetch(`/api/receipts/export.csv?${new URLSearchParams(query)}`, {
+    headers: { Accept: 'text/csv' }, credentials: 'same-origin',
+  })
+  await ensureOk(response)
+  return response.blob()
+}
+
+async function ensureOk(response: Response) {
   if (!response.ok) {
     let message = `Request failed (${response.status}). Try again.`
     try {
@@ -52,5 +66,4 @@ export async function request<M extends Method, P extends JsonPath<M>>(
     } catch { /* Keep the fallback for non-JSON responses. */ }
     throw new ApiError(response.status, message)
   }
-  return response.json()
 }

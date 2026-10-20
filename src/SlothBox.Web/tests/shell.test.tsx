@@ -127,7 +127,8 @@ test('unavailable status is honest, retryable and does not say services are read
   expect(screen.getByRole('button', { name: 'Check again' })).toBeEnabled()
 })
 test('setup hides the sidebar, and incomplete setup redirects there', async () => {
-  server.use(http.get('*/api/status', () => HttpResponse.json({ ...status, setupComplete: false })))
+  server.use(http.get('*/api/status', () => HttpResponse.json({ ...status, setupComplete: false })),
+    http.get('*/api/setup', () => HttpResponse.json({ complete: false, outputRoot: 'D:\\SlothBox-Sample', suggestedFolders: [], status: { ...status, setupComplete: false }, nativePickerAvailable: false })))
   render(<App />)
   expect(await screen.findByRole('heading', { name: 'Set up SlothBox' })).toBeVisible()
   expect(screen.queryByRole('complementary')).not.toBeInTheDocument()
