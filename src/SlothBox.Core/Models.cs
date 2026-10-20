@@ -65,5 +65,10 @@ public abstract record AnalysisResult
     public sealed record NeedsReview(ReviewReason Reason, Analysis? PartialAnalysis = null) : AnalysisResult;
 }
 
+// One logged file change (spec 6.4). Before is the file's state just before it (null for a first filing);
+// After, when set, is the state the file takes with it.
+public sealed record MoveRequest(Guid FileId, ActionKind Kind, string From, string To, string Sha256,
+    FileSnapshot? Before = null, FileSnapshot? After = null);
 public sealed record MoveResult(bool Succeeded, long? ActionId, string? Destination, string? Error);
+public sealed record RecoveredAction(long ActionId, Guid FileId, ActionStatus Status, string? Error, bool Requeued);
 public sealed record UndoResult(Guid FileId, bool Succeeded, string? RestoredPath, string? Error);

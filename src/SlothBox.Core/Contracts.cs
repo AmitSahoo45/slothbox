@@ -44,8 +44,10 @@ public interface INameBuilder
 
 public interface ISafeMover
 {
-    Task<MoveResult> MoveAsync(Guid fileId, string from, string to, FolderMode mode, CancellationToken ct);
-    Task RecoverPendingAsync(CancellationToken ct);
+    // Handles every action kind: move, copy, undo_move and delete_copy.
+    Task<MoveResult> MoveAsync(MoveRequest request, CancellationToken ct);
+    // Startup: resolves each pending action as in spec 6.5 and reports the outcome for logging.
+    Task<IReadOnlyList<RecoveredAction>> RecoverPendingAsync(CancellationToken ct);
 }
 
 public interface IEmbedder
@@ -59,6 +61,8 @@ public interface IJobQueue
     Task EnqueueAsync(IncomingFile file, CancellationToken ct);
     Task<Job?> ClaimNextAsync(CancellationToken ct);
     Task CompleteAsync(long jobId, JobOutcome outcome, CancellationToken ct);
+    // Startup: jobs left processing by a crashed run return to queued (spec 5.7). Returns how many.
+    Task<int> RequeueInterruptedAsync(CancellationToken ct);
 }
 
 public interface IUndoService
@@ -119,7 +123,10 @@ public interface IReceiptRepository
 
 public interface IActionLog
 {
-    Task<long> AppendPendingAsync(FileAction action, CancellationToken ct);
+    // One transaction: the pending action, plus request.After applied to the file and its receipt row.
+    // Null, with nothing written, while the file has a pending action or no longer matches request.Before.
+    Task<long?> AppendPendingAsync(MoveRequest request, CancellationToken ct);
+    // Done points the file at the action's destination; failed puts back the action's Before state.
     Task CompleteAsync(long id, ActionStatus status, string? error, CancellationToken ct);
     Task<IReadOnlyList<FileAction>> GetPendingAsync(CancellationToken ct);
     Task<IReadOnlyList<FileAction>> GetForFileAsync(Guid fileId, CancellationToken ct);
@@ -140,6 +147,7 @@ public interface IWatchedFolderRepository
     Task<WatchedFolder> SaveAsync(WatchedFolder folder, CancellationToken ct);
     Task RemoveAsync(int id, CancellationToken ct);
     Task<IReadOnlyList<string>> GetBaselineAsync(int folderId, CancellationToken ct);
+    Task<bool> IsInBaselineAsync(int folderId, string path, CancellationToken ct);
     Task SetBaselineAsync(int folderId, IReadOnlyList<string> paths, CancellationToken ct);
     Task ClearBaselineAsync(int folderId, CancellationToken ct);
 }

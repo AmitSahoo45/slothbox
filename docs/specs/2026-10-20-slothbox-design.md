@@ -490,11 +490,12 @@ public interface INameBuilder
     string BuildTargetFolder(FileKind kind, string categoryFolder);
 }
 
-// Step 5: moving. Copy, verify hash, delete original (Move mode only). Records actions through IActionLog.
+// Step 5 and undo: every file change (move, copy, undo_move, delete_copy) as a logged action (6.4).
+// The request carries the recorded hash, the file's state before the change and the state it takes with it.
 public interface ISafeMover
 {
-    Task<MoveResult> MoveAsync(Guid fileId, string from, string to, FolderMode mode, CancellationToken ct);
-    Task RecoverPendingAsync(CancellationToken ct);
+    Task<MoveResult> MoveAsync(MoveRequest request, CancellationToken ct);
+    Task<IReadOnlyList<RecoveredAction>> RecoverPendingAsync(CancellationToken ct); // 6.5; the host logs failures
 }
 
 // Step 6: EmbeddingGemma. Implemented in Ai.
@@ -510,6 +511,7 @@ public interface IJobQueue
     Task EnqueueAsync(IncomingFile file, CancellationToken ct); // no-op if the path is already queued or processing
     Task<Job?> ClaimNextAsync(CancellationToken ct);
     Task CompleteAsync(long jobId, JobOutcome outcome, CancellationToken ct);
+    Task<int> RequeueInterruptedAsync(CancellationToken ct); // startup: processing jobs return to queued (5.7)
 }
 
 public interface IUndoService
@@ -583,7 +585,7 @@ flowchart TD
 | Step | What happens | Rules |
 |---|---|---|
 | 1. Detect | A watcher event (Created, Renamed), the 5-min sweep, or a phone upload creates a job. | One queued or processing job per path; a duplicate enqueue is ignored. |
-| 2. Wait and check | Waits until size and last-write time are unchanged for 3 s **and** the file opens with `FileShare.None`. Then computes SHA-256. | **Skip:** temp, hidden and system files (5.3); paths in the folder's baseline; hashes in `ignored_hashes`. **Duplicate:** same hash already filed → `Duplicates`. **Locked:** retried for up to 10 min, then left for the next sweep. |
+| 2. Wait and check | Waits until size and last-write time are unchanged for 3 s **and** the file opens with `FileShare.None`. A file last written 3 s or more ago already counts as unchanged, so existing files are not made to wait again. Then computes SHA-256. | **Skip:** temp, hidden and system files (5.3); paths in the folder's baseline; hashes in `ignored_hashes`. **Duplicate:** same hash already filed or in Needs review (a filing that never finished does not count) → `Duplicates`. **Locked:** retried for up to 10 min, then left for the next sweep. |
 | 3. Read content | **Images:** decoded with SkiaSharp, rotated by EXIF orientation, resized so the long edge is at most 1,600 px, encoded as JPEG quality 85. **PDF:** text via PdfPig. **DOCX:** text via OpenXml. **TXT, MD, CSV:** read as UTF-8. **Office files not parsed in v1** (XLSX, PPTX): name only. **Installers, archives, media:** name only. | Text sent to Gemma: first 6,000 characters. Text stored for keyword search: first 20,000 characters. A PDF with under 50 characters of text in its first 3 pages counts as scanned → Needs review. Password-protected PDF or DOCX → Needs review. HEIC → Needs review. |
 | 4. Ask Gemma | One call: content, the full category list with descriptions, the folder label as a hint, and the original file name. Ollama's JSON-schema `format` forces the output shape. | Timeout 120 s, one retry. Name-only files of type `other` skip this step. |
 | 5. Name and move | Validate (5.2), build the name (5.5), choose the folder, then safe move (6.4). | Copy-only folders: the file is copied, never moved. |
@@ -617,7 +619,7 @@ A file goes to **Needs review** when any of these is true:
 | Media | `.mp4 .mkv .mov .mp3 .wav .m4a .gif` | Name only | No | `other` → `Other\Media` |
 | Anything else | — | Name only | No | `other` → `Other\Misc` (A8) |
 | v1 limits | `.heic .heif`, scanned PDF, password-protected | — | No | Needs review |
-| Always skipped | `.crdownload .part .partial .tmp .download`, names starting `~$`, `desktop.ini`, `Thumbs.db`, hidden or system files | — | — | — |
+| Always skipped | `.crdownload .part .partial .tmp .download`, SlothBox's own `.slothbox-tmp` copies (6.4), names starting `~$`, `desktop.ini`, `Thumbs.db`, hidden or system files | — | — | — |
 
 ### 5.4 The Gemma call
 
@@ -886,6 +888,11 @@ erDiagram
 - `completed_at` on `actions`.
 - `before` (`jsonb`) on `actions`: the file's status, type, category, title, review reason and receipt fields just before the action. Null for a file's first filing. Undo restores it (6.6).
 
+**When a file row counts**
+- The pipeline writes a file's row before its first filing, because the action refers to it.
+- The row counts as filed or in review only once that first filing's action is `done`. Search (6.3), receipts, the activity feed, the laziness meter (6.8) and the duplicate check (5.1) ignore rows without a done action.
+- A retry after a failed first filing reuses the unfinished row (same original path and hash) instead of adding another.
+
 **Constraints and indexes**
 - `categories`: unique (`type`, `name`). Receipt, screenshot and document each have one `Other` row with `is_system = true`. The `other` type has only the four fixed system rows Installers, Archives, Media and Misc (6.7). There are 19 seed categories, 7 system; system rows cannot be deleted.
 - `watched_folders.path`: unique (case-insensitive, normalised full path).
@@ -916,6 +923,7 @@ WITH kw AS (
         SELECT f.id, ts_rank_cd(f.search, q) AS rank
         FROM files f, websearch_to_tsquery('english', @query) AS q
         WHERE f.status = 'filed' AND f.search @@ q
+          AND EXISTS (SELECT 1 FROM actions a WHERE a.file_id = f.id AND a.status = 'done')
         ORDER BY rank DESC
         LIMIT 50
     ) k
@@ -926,6 +934,7 @@ vec AS (
         SELECT f.id, f.embedding <=> @query_vector AS dist
         FROM files f
         WHERE f.status = 'filed' AND f.embedding IS NOT NULL
+          AND EXISTS (SELECT 1 FROM actions a WHERE a.file_id = f.id AND a.status = 'done')
         ORDER BY f.embedding <=> @query_vector
         LIMIT 50
     ) v
@@ -950,10 +959,14 @@ The query runs in a transaction that first runs `SET LOCAL hnsw.ef_search = 100`
 
 ### 6.4 Safe move
 
-1. Insert the action as `pending` (from, to, sha256, kind).
-2. **Same drive:** `File.Move`. **Different drive:** copy to `<to>.slothbox-tmp`, check its hash, then rename to `<to>`.
-3. Delete the original. Skipped for `copy` actions (copy-only folders).
-4. Mark the action `done`. Update `files.current_path` and `files.status`.
+1. Insert the action as `pending` (from, to, sha256, kind, `before`). In the same transaction, the file row takes its new status, type, category, title, review reason and receipt fields.
+2. **Same drive:** `File.Move`. **Different drive, and every `copy` action:** copy to `<to>.slothbox-tmp`, check its hash, then rename to `<to>`. An existing `<to>` is never overwritten.
+3. Delete the original. Skipped for `copy` actions (copy-only folders). If the original cannot be deleted (another program has it open), the verified copy is removed and the action fails: nothing has moved.
+4. Mark the action `done` and update `files.current_path`. A `failed` action puts back the file's `before` fields.
+
+- **One change per file at a time.** A request is refused, with nothing written, while the file has a `pending` action or when the file's fields no longer match the request's `before` (for example a second click on Undo).
+- **Once logged, a change runs to the end,** even if the request that started it is cancelled, so no file is left half-changed.
+- **Read-only files** move across drives as they do on one drive: SlothBox clears the attribute only on an original whose verified copy is in place, and on its own copies.
 
 **Rule: no log, no move.** If the action row cannot be written, nothing moves.
 
@@ -968,6 +981,12 @@ On startup, each `pending` action is resolved:
 | Destination missing, or temp file or hash wrong | Remove partial files, mark `failed`, re-queue the job |
 | Original missing and destination missing | Mark `failed`, log an error, show it in the UI |
 
+- **Partial files** means only SlothBox's `<to>.slothbox-tmp`. A file at `<to>` with the wrong hash is never deleted: it may be the user's. With both files missing, a temp file is kept: it may be the only copy.
+- **The original** is deleted only while it still has the recorded hash. An original edited since is kept.
+- **Re-queue** applies only to a first filing. An interrupted refile or undo is marked `failed`, and the file keeps its `before` fields.
+- **`delete_copy`:** a pending one is finished only if SlothBox's copy still has the recorded hash and the original is still in its folder, unchanged. Otherwise it fails and the copy is kept.
+- **Locked files:** the action stays `pending` until the next start.
+
 ### 6.6 Undo
 
 **What can be undone**
@@ -979,12 +998,15 @@ On startup, each `pending` action is resolved:
 - Undo reverses one action at a time, newest first. Undo on a file reverses that file's newest `done` action. "Undo last" reverses the newest action overall. "Undo since" reverses every action since the chosen time, newest first.
 1. Check that the file at `current_path` still has the recorded hash. If not, refuse and show the reason: "the file changed or moved after SlothBox filed it".
 2. Move it back to that action's `from_path` with the safe-move steps, as kind `undo_move`.
-3. If that path is now taken, restore as `name (restored).ext`.
+3. If that path is now taken, restore as `name (restored).ext`, then `name (restored 2).ext` and so on.
 4. Restore the file's fields from the action's `before` snapshot (6.2). Undoing a refile puts the file back where it was filed before, with its earlier status. Nothing is ignored.
-5. Only undoing a file's first filing (the file leaves SlothBox) adds its hash to `ignored_hashes` with reason `undone` and sets `files.status = undone`.
+5. Only undoing a file's first filing (the file leaves SlothBox) adds its hash to `ignored_hashes` with reason `undone` and sets `files.status = undone`. Both are written with the pending action, before the file reaches its source folder, so the watcher skips it; a failed undo removes them again.
+6. "Undo since" stops at a file's first refused action and leaves that file's older actions as they are. Other files carry on.
+7. A file open in another program is refused: "The file is open in another program. Close it and try again."
 
 **Copy-only folders**
 - Undoing the first filing deletes SlothBox's own copy (kind `delete_copy`), after checking its hash. Undoing a later refile is a normal `undo_move`.
+- If the original is missing or changed in its folder, the undo is refused and SlothBox keeps its copy: it may be the only copy of what was filed.
 - Apart from completing a verified move, this is the only delete SlothBox performs.
 
 **Fix from the UI**
