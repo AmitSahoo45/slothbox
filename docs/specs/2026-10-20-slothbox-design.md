@@ -2,11 +2,11 @@
 
 | | |
 |---|---|
-| Version | 3 (changes listed in Section 22) |
-| Status | Draft for review |
+| Version | 3.1 (changes listed in Section 22) |
+| Status | Approved for Track 0 with the kickoff amendments |
 | Date | 20 Oct 2026 |
-| Owner | Amit |
-| Builders | Claude Code (local) and GPT 6 Astra (Codex), working in parallel and reviewing each other |
+| Owner | the owner |
+| Builders | Two coding agents, with the owner managing Git and the other agent reviewing each diff |
 | Repo folder | `D:\Projects\24-HacktoberFest-2026\04-Week-3` |
 | GitHub repo | `AmitSahoo45/slothbox` |
 | Save this file as | `docs\specs\2026-10-20-slothbox-design.md` |
@@ -70,7 +70,7 @@ Everything else records what was agreed in chat.
 **Rules that affect this build**
 - The repo must be new and started inside the challenge window.
 - Commits made after the deadline must be noted in the README.
-- Any non-trivial reuse of prior work, including Amit's own `rag-semantic-search` code, must be credited in the post.
+- Any non-trivial reuse of prior work, including the owner's own `rag-semantic-search` code, must be credited in the post.
 - The post must be in English to be eligible for prizes.
 - One submission per challenge.
 
@@ -80,7 +80,6 @@ Everything else records what was agreed in chat.
 - Code
 - How I Built It
 - Why Does Open Innovation Matter?
-- My Agent Session (optional, DevRelay)
 - The Lazy Payoff (optional)
 - Prize Categories
 
@@ -102,7 +101,7 @@ SlothBox is a local file butler for Windows 11.
 3. Existing files are never moved unless the user clicks "Tidy them now".
 4. Every file action can be undone from the dashboard or the tray.
 5. Search finds files by keyword and by meaning (for example "that Jio bill" or "the Reddit thread about .NET 10").
-6. SlothBox runs on Amit's real folders during the challenge week. The laziness meter produces real numbers for the post.
+6. SlothBox runs on the owner's real folders during the challenge week. The laziness meter produces real numbers for the post.
 7. No personal data is committed to the public repo.
 
 ### 1.4 Non-goals for v1
@@ -145,8 +144,8 @@ SlothBox is a local file butler for Windows 11.
 
 | Item | Detail |
 |---|---|
-| Builders | Claude Code on the laptop and GPT 6 Astra in Codex, working in parallel and reviewing each other. The work split is decided in the implementation plan. |
-| Astra budget | Two banked ChatGPT resets expire on **23 Oct 2026**. Astra's share should be scheduled before then. |
+| Builders | Two coding agents reviewing each other's diffs. The owner manages Git and creates separate worktrees before parallel implementation. The work split is decided in the implementation plan. |
+| Availability | Prioritise the initial implementation before **23 Oct 2026**. |
 | Build days | Tue 20 Oct (holiday) plus the rest of the week. The deadline is the constraint. |
 | Total estimate | ~24 h of build work (Section 18), before the post and video. The UI and the engine meet only at the API (Section 8), so they can be built in parallel. |
 
@@ -157,7 +156,7 @@ SlothBox is a local file butler for Windows 11.
 | # | Decision | Rejected alternatives and reason |
 |---|---|---|
 | D1 | One product combining three ideas: receipt and bill tidier, Downloads janitor, screenshot librarian | Bank-statement sorter dropped: a separate ML stack. Garden project not reused: no recycling of earlier entries. |
-| D2 | C# on .NET 10 for the engine | Python: Amit debugs faster in .NET, and it ships as one `.exe`. |
+| D2 | C# on .NET 10 for the engine | Python: the owner debugs faster in .NET, and it ships as one `.exe`. |
 | D3 | `gemma4:e4b` for reading files (text and images); `embeddinggemma` for search vectors (768 dimensions), run on the CPU. Fallbacks `gemma4:e4b-it-qat`, then `gemma4:e2b`, chosen by the day-one rule (5.7). | 26B and 31B Gemma 4 variants do not fit in 8 GB VRAM. |
 | D4 | Receipt paths: Quick Share into Downloads, LAN phone page, and cloud camera folders added as copy-only watched folders | — |
 | D5 | Auto-file everything, with undo and a Needs review folder | Suggest-only: user still does the work. |
@@ -178,7 +177,7 @@ SlothBox is a local file butler for Windows 11.
 | D20 | AI accuracy targets (Section 13.4) | — |
 | D21 | GitHub Actions CI, also entered in the GitHub Copilot category | — |
 | D22 | Product and project name: SlothBox; repo `AmitSahoo45/slothbox` in `04-Week-3` | — |
-| D23 | Dashboard: React + TypeScript + Vite + Tailwind CSS, built to static files and served by `SlothBox.exe` (ADR-005) | Next.js: its server features go unused, and running its server adds a second runtime. Blazor: fine, but Amit prefers React. |
+| D23 | Dashboard: React + TypeScript + Vite + Tailwind CSS, built to static files and served by `SlothBox.exe` (ADR-005) | Next.js: its server features go unused, and running its server adds a second runtime. Blazor: fine, but the owner prefers React. |
 | D24 | Inputs are a user-managed list of watched folders, picked with the native Windows folder dialog. Downloads and Screenshots are pre-filled. | Four fixed inputs. |
 | D25 | Existing files in a folder are never touched automatically. Per folder, the user can click "Tidy them now". | Tidy existing files on first run. |
 | D26 | Output folder chosen at first run (default `D:\SlothBox`); fixed in v1 | — |
@@ -310,14 +309,16 @@ services:
 
 volumes:
   ollama_models:
+    name: slothbox-ollama-models
   pgdata:
+    name: slothbox-pgdata
 ```
 
 **Rules**
 - **Ports:** both bind to `127.0.0.1` only. Ollama uses host port 11436 because 11434 and 11435 belong to other projects. Postgres uses 5433 because `rag-postgres` uses 5432.
 - **Postgres data:** uses a named Docker volume, not a Windows folder. Postgres rejects the file permissions of Windows-folder mounts.
 - **Docker disk image:** must be on D:. Check this in Docker Desktop: Settings > Resources > Advanced > Disk image location.
-- **Database password:** one user-level environment variable, `SLOTHBOX_DB_PASSWORD`, read by both compose and the app. `docker/.env` is optional and git-ignored.
+- **Database password:** the app's planned source is the user-level environment variable `SLOTHBOX_DB_PASSWORD`. The owner supplies an ignored `docker/.env` for Compose without a shell variable. Agents must never read, print or edit that file or echo the value. Validate only with `docker compose config --quiet` from `docker/`.
 - **GPU check:** after the first model call, `ollama ps` must show `100% GPU` for the Gemma model (day-one rule, 5.7). `embeddinggemma` runs on the CPU (`num_gpu: 0`), so Gemma has the GPU to itself.
 - **One Ollama at a time:** do not run SlothBox's Ollama while another project's Ollama has models loaded. 8 GB VRAM fits one set. If it happens, SlothBox shows "Gemma is offline" and waits.
 
@@ -393,7 +394,7 @@ Inputs are a list the user manages on the Folders page (Section 7.4.6).
   .gitignore
   .github/workflows/ci.yml
   docker/compose.yaml
-  docker/.env                    git-ignored
+  docker/.env.example            placeholder only, no secrets
   docs/specs/2026-10-20-slothbox-design.md
   docs/plans/2026-10-20-slothbox-implementation-plan.md
   contracts/openapi.json         committed API contract (8.1)
@@ -406,7 +407,7 @@ Inputs are a list the user manages on the Folders page (Section 7.4.6).
   src/SlothBox.Web/              React UI source (Section 7.10)
   tests/SlothBox.Tests/
   tests/fixtures/public/         publicly available sample files only
-  tests/fixtures/private/        git-ignored: Amit's real files
+  tests/fixtures/private/        prohibited; never create or populate
   tools/SlothBox.Eval/
 ```
 
@@ -430,7 +431,7 @@ FluentAssertions is avoided: version 8 and later require a paid licence for comm
 
 ### 4.7 Key interfaces in `SlothBox.Core`
 
-These are indicative. Keep the boundaries; adjust names and signatures as needed. Interfaces, the schema and the API contract are merged first so both agents can build against them in parallel.
+These are indicative. Keep the boundaries; adjust names and signatures as needed. Interfaces, the schema and the API contract are completed and reviewed first so both agents can build against them in separate worktrees created by the owner.
 
 ```csharp
 public enum FileKind { Receipt, Screenshot, Document, Other, Unknown }
@@ -886,7 +887,7 @@ erDiagram
 - `before` (`jsonb`) on `actions`: the file's status, type, category, title, review reason and receipt fields just before the action. Null for a file's first filing. Undo restores it (6.6).
 
 **Constraints and indexes**
-- `categories`: unique (`type`, `name`). One `Other` row per type with `is_system = true`; system rows cannot be deleted.
+- `categories`: unique (`type`, `name`). Receipt, screenshot and document each have one `Other` row with `is_system = true`. The `other` type has only the four fixed system rows Installers, Archives, Media and Misc (6.7). There are 19 seed categories, 7 system; system rows cannot be deleted.
 - `watched_folders.path`: unique (case-insensitive, normalised full path).
 - `folder_baseline`: primary key (`folder_id`, `path`).
 - `files.sha256`: B-tree index (not unique; duplicates have their own rows).
@@ -1021,7 +1022,7 @@ Seeded on first run. Users can edit, rename or add more on the Categories page (
 | | |
 |---|---|
 | Subject | A local file butler that files things while you do nothing. |
-| Audience | Amit, every day: a developer who wants low reading load. DEV judges watching a 2-minute demo video. |
+| Audience | the owner, every day: a developer who wants low reading load. DEV judges watching a 2-minute demo video. |
 | Primary job | Show at a glance what SlothBox did, and let you fix the few files it could not handle, in seconds. |
 
 **Principles**
@@ -1220,8 +1221,8 @@ Three steps, in order. Moving back is allowed until "Finish setup".
 |  SlothBox                                         Step 2 of 3  |
 |                                                                |
 |  Which folders should SlothBox watch?                          |
-|  [x] Downloads     C:\Users\amit\Downloads             Move    |
-|  [x] Screenshots   C:\Users\amit\Pictures\Screenshots  Move    |
+|  [x] Downloads     C:\Users\the owner\Downloads             Move    |
+|  [x] Screenshots   C:\Users\the owner\Pictures\Screenshots  Move    |
 |  [ Add folder ]                                                |
 |                                                                |
 |  Files already in these folders stay where they are.           |
@@ -1407,10 +1408,10 @@ One file at a time.
 |  This can't be changed in this version.                            |
 |                                                                    |
 |  Watched folders                                                   |
-|  (on)  Downloads    C:\Users\amit\Downloads           Move   128 filed |
+|  (on)  Downloads    C:\Users\the owner\Downloads           Move   128 filed |
 |        142 files were already here.   [ Tidy them now ]            |
-|  (on)  Screenshots  C:\Users\amit\Pictures\Screenshots Move   64 filed |
-|  (off) Camera roll  C:\Users\amit\OneDrive\Pictures\Camera Roll    |
+|  (on)  Screenshots  C:\Users\the owner\Pictures\Screenshots Move   64 filed |
+|  (off) Camera roll  C:\Users\the owner\OneDrive\Pictures\Camera Roll    |
 |                     Copy only (cloud folder)                       |
 |                                                                    |
 |  Phone page                                                        |
@@ -1502,7 +1503,7 @@ Opens from the right, 440 px wide, over any page.
 |                                            |
 |  History                                   |
 |  10:41  Moved from                         |
-|         C:\Users\amit\Downloads\IMG_2041.jpg |
+|         C:\Users\the owner\Downloads\IMG_2041.jpg |
 |  10:41  Filed in                           |
 |         D:\SlothBox\Receipts\Bills and recharges |
 +--------------------------------------------+
@@ -1855,7 +1856,7 @@ src/SlothBox.Web/
 - **Prompt injection:** handled by design (Section 9).
 - **Least privilege:** runs as the logged-in user (ADR-001). No admin rights, except the one-time firewall rule.
 - **Secrets:**
-  - The database password lives only in the user-level environment variable `SLOTHBOX_DB_PASSWORD` (or the optional, git-ignored `docker/.env` for compose). It is never written to `settings.json`, and the connection string is never logged.
+  - The app's planned database password source is the user-level environment variable `SLOTHBOX_DB_PASSWORD`. The owner manages an ignored `docker/.env` for Compose. Agents never read, print or edit it, and never run plain `docker compose config`. The password is never written to `settings.json`, and the connection string is never logged.
   - The phone token lives in `settings.json`.
 - **Logs:** contain file hashes, paths and timings. They never contain file content or extracted text.
 - **Telemetry:** none.
@@ -1969,8 +1970,8 @@ The app adds the password from `SLOTHBOX_DB_PASSWORD` at startup. If the variabl
 ### 13.4 AI eval and targets
 
 - **Set:** 30 files: 10 receipts, 10 screenshots (including Reddit, Instagram and UPI payment screenshots), 10 documents.
-  - Amit's real files go in `tests/fixtures/private` (git-ignored).
-  - Expected answers go in `expected.json` next to them, also git-ignored.
+  - Agents use temporary folders on D: and `tests/fixtures/public` only. Never put anything in `tests/fixtures/private`.
+  - Any later evaluation on real files requires the owner's explicit instruction and a location outside the repo.
 - **Output:** a table with type accuracy, category accuracy, receipt amount and date exact-match rate, and average and p90 seconds per file. The table goes straight into the post.
 - **First-run targets** (to be adjusted after the first measurement):
   - Type correct 90% or more
@@ -2013,11 +2014,14 @@ This also enters the GitHub Copilot category, which includes automating a projec
   - the API contract (Section 8, as an OpenAPI document)
   - the design tokens (7.2)
 
-  These are merged first. Parallel work starts after that.
+  These are completed and reviewed first. Parallel implementation starts after that, in separate worktrees created by the owner.
 - **Natural split line:** the UI (`SlothBox.Web`) talks to the engine only through the API, so one agent can build it while the other builds the engine. The final split is decided in the plan.
-- **Branches:** one branch per task. Every pull request needs green CI and a review by the other agent before merge.
-- **Scope:** each task touches one module where possible, to avoid merge conflicts.
-- **This spec is the source of truth.** Changes to it are made in a pull request so both agents see them.
+- **Git belongs to the owner:** agents never change Git state. Only `git status`, `git diff`, `git log` and `git show` are allowed. Agents never run `git init`, `add`, `commit`, `push`, `pull`, `merge`, `rebase`, `reset`, `restore`, `checkout`, `switch`, `stash`, `tag`, `branch`, `worktree`, `config`, `cherry-pick`, `revert`, or any `gh` command, and never create a GitHub repository, branch, pull request or issue.
+- **Handoff:** leave every change uncommitted. The other agent reviews the diff; the owner commits and handles all Git operations.
+- **Checks:** until the repository is on GitHub, "green CI" means the same build and test commands pass locally. Report actual results.
+- **Scope:** each task touches one module where possible.
+- **This spec is the source of truth.** Include spec and API-contract updates in the same reviewable diff as the behaviour they describe. Explain conflicts and proposed fixes instead of silently working around them.
+- **No AI attribution:** no co-author trailers, generated-by lines, or coding-agent tool, product or model names in code, comments, file headers, docs, README or suggested commit messages.
 
 ---
 
@@ -2030,7 +2034,7 @@ This also enters the GitHub Copilot category, which includes automating a projec
    [Environment]::SetEnvironmentVariable('NUGET_PACKAGES','D:\.nuget\packages','User'); [Environment]::SetEnvironmentVariable('NUGET_HTTP_CACHE_PATH','D:\.nuget\v3-cache','User'); npm config set cache D:\.npm-cache --global; [Environment]::SetEnvironmentVariable('SLOTHBOX_DB_PASSWORD','<choose a password>','User')
    ```
 2. Confirm the Docker Desktop disk image is on D: (Settings > Resources > Advanced).
-3. Start SlothBox's services. Other projects' containers are untouched; stop any other Ollama container that has models loaded first.
+3. Start SlothBox's services. Other projects' containers stay untouched by agents. The owner must first ensure no other Ollama container has models loaded.
    ```powershell
    docker compose -f D:\Projects\24-HacktoberFest-2026\04-Week-3\docker\compose.yaml up -d
    ```
@@ -2062,9 +2066,9 @@ This also enters the GitHub Copilot category, which includes automating a projec
 
 ### ADR-001: One process
 
-**Status:** Accepted · **Date:** 20 Oct 2026 · **Decider:** Amit
+**Status:** Accepted · **Date:** 20 Oct 2026 · **Decider:** the owner
 
-**Context.** SlothBox must watch user folders, call local AI, serve the UI and a LAN upload page, show a tray icon, and open a native folder dialog. It runs while Amit uses the laptop.
+**Context.** SlothBox must watch user folders, call local AI, serve the UI and a LAN upload page, show a tray icon, and open a native folder dialog. It runs while the owner uses the laptop.
 
 **Options**
 
@@ -2088,7 +2092,7 @@ This also enters the GitHub Copilot category, which includes automating a projec
 
 ### ADR-002: Postgres + pgvector for storage and search
 
-**Status:** Accepted · **Date:** 20 Oct 2026 · **Decider:** Amit
+**Status:** Accepted · **Date:** 20 Oct 2026 · **Decider:** the owner
 
 **Context.** SlothBox needs a ledger, an action log for undo, categories, watched folders, a persistent queue, keyword search and meaning search, for one person's files (tens of thousands at most).
 
@@ -2100,7 +2104,7 @@ This also enters the GitHub Copilot category, which includes automating a projec
 | Setup | One more container (compose) | None, single file |
 | Hybrid search | Full-text + vector in one SQL query | Separate FTS5 query + C# merge |
 | Prize category | Tiger Data (pgvector + hybrid search) | None |
-| Team familiarity | High: Amit's `rag-semantic-search` uses .NET + Ollama + pgvector | Medium |
+| Team familiarity | High: the owner's `rag-semantic-search` uses .NET + Ollama + pgvector | Medium |
 | Distribution | Users need Docker anyway (Ollama) | Simpler |
 
 **Decision.** A. Chosen for familiarity, the Tiger Data category and one-query hybrid search, not for speed.
@@ -2112,7 +2116,7 @@ This also enters the GitHub Copilot category, which includes automating a projec
 
 ### ADR-003: `gemma4:e4b` on the local GPU
 
-**Status:** Accepted · **Date:** 20 Oct 2026 · **Decider:** Amit
+**Status:** Accepted · **Date:** 20 Oct 2026 · **Decider:** the owner
 
 **Context.** One model must read images and text on an RTX 4060 with 8 GB VRAM.
 
@@ -2130,7 +2134,7 @@ This also enters the GitHub Copilot category, which includes automating a projec
 
 ### ADR-004: Rule-based Needs review
 
-**Status:** Accepted · **Date:** 20 Oct 2026 · **Decider:** Amit
+**Status:** Accepted · **Date:** 20 Oct 2026 · **Decider:** the owner
 
 **Context.** Auto-filing needs a way to hold back uncertain results.
 
@@ -2142,9 +2146,9 @@ This also enters the GitHub Copilot category, which includes automating a projec
 
 ### ADR-005: React + Vite UI served by SlothBox.exe
 
-**Status:** Accepted · **Date:** 20 Oct 2026 · **Decider:** Amit
+**Status:** Accepted · **Date:** 20 Oct 2026 · **Decider:** the owner
 
-**Context.** SlothBox needs a local dashboard with live updates. The backend is .NET in one process (ADR-001). Amit suggested Next.js.
+**Context.** SlothBox needs a local dashboard with live updates. The backend is .NET in one process (ADR-001). The owner suggested Next.js.
 
 **Options**
 
@@ -2171,9 +2175,8 @@ This also enters the GitHub Copilot category, which includes automating a projec
 | What I Built | SlothBox: point it at your messy folders and forget them. Who gets lazier: anyone with a messy Downloads folder, a screenshot pile, or a wallet of paper receipts. |
 | Demo | A video (local app, no public deployment). Script below. |
 | Code | Public GitHub repo `AmitSahoo45/slothbox`, embedded. |
-| How I Built It | Gemma 4 E4B through Ollama for reading files, EmbeddingGemma + pgvector for hybrid search, a .NET 10 tray app, a React UI, and two coding agents working in parallel with cross-review. Architecture diagrams from this spec. |
+| How I Built It | Gemma 4 E4B through Ollama for reading files, EmbeddingGemma + pgvector for hybrid search, a .NET 10 tray app and a React UI. Architecture diagrams from this spec. |
 | Why Does Open Innovation Matter? | Receipts, chats and personal documents never leave the laptop. Works offline. Costs nothing per file after setup. Models can be swapped. A closed API would need every private screenshot uploaded. |
-| My Agent Session | Optional. Save Claude Code and Codex sessions with DevRelay. |
 | The Lazy Payoff | Real numbers from the week: files filed, minutes saved (with the formula), receipts logged, duplicates caught, eval accuracy and seconds per file. |
 | Prize Categories | Best Use of Gemma, Best Use of Tiger Data, Best Use of GitHub Copilot |
 
@@ -2192,13 +2195,13 @@ This also enters the GitHub Copilot category, which includes automating a projec
 - README note for any commits made after the deadline.
 - Check every image and the video for personal data.
 
-**Data collection:** SlothBox should run on Amit's real folders as early in the week as possible, so the Lazy Payoff section has several days of real numbers.
+**Data collection:** SlothBox should run on the owner's real folders as early in the week as possible, so the Lazy Payoff section has several days of real numbers.
 
 ---
 
 ## 18. Build order and estimates
 
-Input for the implementation plan. The split between Claude Code and GPT 6 Astra is decided in the plan, with Astra's share before 23 Oct.
+Input for the implementation plan. The owner decides the work split, prioritising the initial implementation before 23 Oct.
 
 | Order | Work | Estimate |
 |---|---|---|
@@ -2268,7 +2271,7 @@ Not discussed in chat. Defaults; change any you disagree with.
 | A11 | Shouldly instead of FluentAssertions | FluentAssertions 8+ needs a paid licence for commercial use. |
 | A12 | Receipts page with monthly totals and CSV export | The CSV ledger from the original receipt idea. |
 | A13 | Thumbnail cache in `<output>\_cache\thumbs` | Fast feed and search results. |
-| A14 | CI split: Linux for tests, Windows to build the App | Windows runners cannot run the Linux pgvector container; Linux cannot build WinForms. |
+| A14 | CI split: Linux for tests, Windows to build the App | Windows runners cannot run the Linux pgvector container. Linux can cross-build App with `EnableWindowsTargeting`, but cannot run WinForms. |
 | A15 | Local API protections: Host check, `X-SlothBox` header, no CORS, IDs not paths | Stops other websites open in your browser from triggering actions on `localhost`. |
 | A16 | Native folder dialog opened by the tray process, with a typed-path fallback | Browsers cannot return real folder paths. |
 | A17 | Folder baseline: paths present when a folder is added are recorded and skipped | Makes "never touch existing files" exact, without guessing from timestamps. |
@@ -2287,12 +2290,21 @@ Not discussed in chat. Defaults; change any you disagree with.
 
 ## 22. Changelog
 
+**Version 3.1 (20 Oct 2026), approved kickoff amendments**
+- Git is read-only for agents; the owner creates any parallel worktrees and commits. The other agent reviews the uncommitted diff. Until GitHub hosting exists, green CI means the same commands pass locally.
+- Removed instructions for agents to commit, create branches or open pull requests, and removed coding-agent attribution.
+- Plan T0.9 requires neutral `AGENTS.md` guidance containing all eleven kickoff hard rules, plus ignores for `CLAUDE.md`, `.claude/` and `docs/agents/`.
+- Added finish tasks: DEV post draft (Section 17), 2 h on Sat 24 Oct; demo video (Section 17 outline), 1 h on Sun 25 Oct.
+- Added the ordered cut list if M1 slips past Thu 22 Oct: receipts CSV export, Settings beyond theme, Categories editor UI, tray menu beyond Open/Pause/Exit, then Change in the file drawer. Phone upload, Today, Needs review, undo and search remain mandatory.
+- Track 0 preflight clarifications: the 19-category seed has three Other fallback rows and four fixed extension categories; Docker volumes have explicit `slothbox-*` names; Linux may cross-build but not run App; repo-local secrets and private fixtures remain prohibited.
+- Owner configuration clarification: the owner supplies ignored `docker/.env` for Compose without a shell variable. Agents must not read, print or edit it; validation uses `docker compose config --quiet` from `docker/`.
+
 **Version 3 (20 Oct 2026), after the Step 1 checks**
 - New `SlothBox.Server` project (`net10.0`): Kestrel host, API, SSE, phone page server, watchers and worker. App hosts it in-process (ADR-001 unchanged) and keeps the Windows-only pieces behind interfaces (`INativeDialogs`, `IKnownFolders`, `IAutoStart`, `ITrayNotifier`).
 - API contract committed as `contracts/openapi.json` and checked against `/openapi/v1.json` by a Linux test. The UI generates its types from the committed file.
 - Gemma call: `think: false`, `num_ctx` 8192, HTTP timeout above 120 s, `format` sent as a JSON object. `gemma4:e4b` is 6.6 GB, not ~4 GB. `embeddinggemma` runs on the CPU. Day-one rule with fallbacks `gemma4:e4b-it-qat`, then `gemma4:e2b` (5.7).
 - Undo reverses one action at a time, newest first, back to that action's `from_path`. Only undoing the first filing ignores the hash. New `actions.before` snapshot. The laziness meter counts first filings only.
-- Database password from one user-level variable, `SLOTHBOX_DB_PASSWORD`, for compose and the app. `docker/.env` is optional. The connection string is never logged.
+- Database password from one user-level variable, `SLOTHBOX_DB_PASSWORD`, for compose and the app. Version 3.1 supersedes the former optional `docker/.env` guidance: the owner supplies that file; agents never create, read, print or edit it. The connection string is never logged.
 - Hybrid search sets `hnsw.ef_search = 100` (the default 40 is below `LIMIT 50`), tested with more than 50 rows.
 - EmbeddingGemma prefixes verified; `title: none` rule added.
 - Fonts: static Fontsource packages 5.3.0. Amounts never use the mono face (it has no ₹).
@@ -2325,4 +2337,4 @@ Not discussed in chat. Defaults; change any you disagree with.
 - HF26 challenge hub (partner categories, FAQ): https://dev.to/challenges/hf26
 - Gemma on Ollama: https://ai.google.dev/gemma/docs/integrations/ollama
 - Ollama embeddings: https://docs.ollama.com/capabilities/embeddings
-- Amit's prior project (.NET + Ollama + pgvector): https://github.com/AmitSahoo45/rag-semantic-search
+- The owner's prior project (.NET + Ollama + pgvector): https://github.com/AmitSahoo45/rag-semantic-search

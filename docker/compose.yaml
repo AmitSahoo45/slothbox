@@ -1,0 +1,42 @@
+name: slothbox
+services:
+  ollama:
+    image: ollama/ollama:0.40.2
+    container_name: slothbox-ollama
+    ports:
+      - "127.0.0.1:11436:11434"
+    environment:
+      OLLAMA_KEEP_ALIVE: "30m"
+      OLLAMA_MAX_LOADED_MODELS: "2"
+    volumes:
+      - ollama_models:/root/.ollama
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    restart: unless-stopped
+  postgres:
+    image: pgvector/pgvector:0.8.7-pg17
+    container_name: slothbox-postgres
+    ports:
+      - "127.0.0.1:5433:5432"
+    environment:
+      POSTGRES_DB: slothbox
+      POSTGRES_USER: slothbox
+      POSTGRES_PASSWORD: ${SLOTHBOX_DB_PASSWORD:?SLOTHBOX_DB_PASSWORD must be provided by the owner}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U slothbox -d slothbox"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+volumes:
+  ollama_models:
+    name: slothbox-ollama-models
+  pgdata:
+    name: slothbox-pgdata

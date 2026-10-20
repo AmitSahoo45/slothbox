@@ -1,0 +1,15 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/SlothBox.Core/SlothBox.Core.csproj" />
+    <Project Path="src/SlothBox.Ai/SlothBox.Ai.csproj" />
+    <Project Path="src/SlothBox.Data/SlothBox.Data.csproj" />
+    <Project Path="src/SlothBox.Server/SlothBox.Server.csproj" />
+    <Project Path="src/SlothBox.App/SlothBox.App.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/SlothBox.Tests/SlothBox.Tests.csproj" />
+  </Folder>
+  <Folder Name="/tools/">
+    <Project Path="tools/SlothBox.Eval/SlothBox.Eval.csproj" />
+  </Folder>
+</Solution>

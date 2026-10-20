@@ -1,0 +1,5 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <ItemGroup>
+    <ProjectReference Include="../SlothBox.Core/SlothBox.Core.csproj" />
+  </ItemGroup>
+</Project>

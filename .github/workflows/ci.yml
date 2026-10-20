@@ -1,0 +1,70 @@
+name: Verify
+on: [push, pull_request]
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      NUGET_PACKAGES: ${{ github.workspace }}/.scratch/nuget/packages
+      NUGET_HTTP_CACHE_PATH: ${{ github.workspace }}/.scratch/nuget/http
+      DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+      - run: dotnet build tests/SlothBox.Tests/SlothBox.Tests.csproj -c Release
+      - run: dotnet build tools/SlothBox.Eval/SlothBox.Eval.csproj -c Release
+      - run: dotnet test tests/SlothBox.Tests/SlothBox.Tests.csproj -c Release --no-build --collect:"XPlat Code Coverage" --results-directory .scratch/coverage
+      - uses: actions/upload-artifact@v7
+        with:
+          name: coverage
+          path: .scratch/coverage/**/coverage.cobertura.xml
+          include-hidden-files: true
+          if-no-files-found: error
+      - run: docker compose --env-file docker/.env.example -f docker/compose.yaml config --quiet
+  web:
+    runs-on: ubuntu-latest
+    env:
+      npm_config_cache: ${{ github.workspace }}/.scratch/npm
+    defaults:
+      run:
+        working-directory: src/SlothBox.Web
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22.20.0"
+          package-manager-cache: false
+      - run: npm ci
+      - run: npm run verify
+  build-app:
+    runs-on: windows-latest
+    env:
+      NUGET_PACKAGES: D:\slothbox-ci-cache\nuget\packages
+      NUGET_HTTP_CACHE_PATH: D:\slothbox-ci-cache\nuget\http
+      npm_config_cache: D:\slothbox-ci-cache\npm
+      DOTNET_INSTALL_DIR: D:\slothbox-ci-tools\dotnet
+      DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: global.json
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22.20.0"
+          package-manager-cache: false
+      - run: npm ci
+        working-directory: src/SlothBox.Web
+      - run: npm run build
+        working-directory: src/SlothBox.Web
+      - run: dotnet build src/SlothBox.App/SlothBox.App.csproj -c Release

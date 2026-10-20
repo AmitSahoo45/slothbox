@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+  <PropertyGroup>
+    <GenerateEmbeddedFilesManifest Condition="Exists('wwwroot/index.html')">true</GenerateEmbeddedFilesManifest>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../SlothBox.Core/SlothBox.Core.csproj" />
+    <ProjectReference Include="../SlothBox.Ai/SlothBox.Ai.csproj" />
+    <ProjectReference Include="../SlothBox.Data/SlothBox.Data.csproj" />
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
+    <PackageReference Include="Microsoft.Extensions.FileProviders.Embedded" />
+  </ItemGroup>
+  <ItemGroup>
+    <EmbeddedResource Include="wwwroot/**" />
+  </ItemGroup>
+</Project>

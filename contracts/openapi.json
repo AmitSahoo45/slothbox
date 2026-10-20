@@ -1,0 +1,3558 @@
+{
+  "openapi": "3.1.1",
+  "info": {
+    "title": "SlothBox API",
+    "version": "v1"
+  },
+  "paths": {
+    "/events": {
+      "get": {
+        "tags": [
+          "Events"
+        ],
+        "operationId": "GetEvents",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/event-stream": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/u/{token}": {
+      "get": {
+        "tags": [
+          "Phone"
+        ],
+        "operationId": "GetPhonePage",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/html": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "Not Implemented",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/u/{token}/upload": {
+      "post": {
+        "tags": [
+          "Phone"
+        ],
+        "operationId": "UploadPhoneFile",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/PhoneUploadRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PhoneUploadResultDto"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "Not Implemented",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/status": {
+      "get": {
+        "tags": [
+          "Dashboard"
+        ],
+        "operationId": "GetStatus",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusDto"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "Not Implemented",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/pause": {
+      "post": {
+        "tags": [
+          "Dashboard"
+        ],
+        "operationId": "Pause",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusDto"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "Not Implemented",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/resume": {
+      "post": {
+        "tags": [
+          "Dashboard"
+        ],
+        "operationId": "Resume",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusDto"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "Not Implemented",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/activity": {
+      "get": {
+        "tags": [
+          "Dashboard"
+        ],
+        "operationId": "GetActivity",
+        "parameters": [
+          {
+            "name": "cursor",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ActivityPageDto"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "Not Implemented",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/stats/laziness": {
+      "get": {
+        "tags": [
+          "Dashboard"
+        ],
+        "operationId": "GetLazinessStats",
+        "parameters": [
+          {
+            "name": "range",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LazinessStatsDto"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "Not Implemented",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/files/{id}": {
+      "get": {
+        "tags": [
+          "Dashboard"
+        ],
+        "operationId": "GetFile",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FileDetailsDto"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "Not Implemented",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/files/{id}/thumb": {
+      "get": {
+        "tags": [
+          "Dashboard"
+        ],
+        "operationId": "GetThumbnail",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "501": {
+            "description": "Not Implemented",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "OK",
+            "content": {
+              "image/jpeg": {
+                "schema": {
+                  "contentMediaType": "image/jpeg"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/files/{id}/preview": {
+      "get": {
+        "tags": [
+          "Dashboard"
+        ],
+        "operationId": "GetPreview",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "501": {
+            "description": "Not Implemented",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "OK",
+            "content": {
+              "image/jpeg": {
+                "schema": {
+                  "contentMediaType": "image/jpeg"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/files/{id}/open": {
+      "post": {
+        "tags": [
+          "Dashboard"
+        ],
+        "operationId": "OpenFile",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MutationResultDto"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "Not Implemented",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/files/{id}/reveal": {
+      "post": {
+        "tags": [
+          "Dashboard"
+        ],
+        "operationId": "RevealFile",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MutationResultDto"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "Not Implemented",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/files/{id}/undo": {
+      "post": {
+        "tags": [
+          "Dashboard"
+        ],
+        "operationId": "UndoFile",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UndoResultDto"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "Not Implemented",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/files/{id}/refile": {
+      "post": {
+        "tags": [
+          "Dashboard"
+        ],
+        "operationId": "Refile",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RefileRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FileDetailsDto"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "Not Implemented",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/undo/last": {
+      "post": {
+        "tags": [
+          "Dashboard"
+        ],
+        "operationId": "UndoLast",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UndoResultDto"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "Not Implemented",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/undo/since": {
+      "post": {
+        "tags": [
+          "Dashboard"
+        ],
+        "operationId": "UndoSince",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UndoSinceRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UndoBatchResultDto"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "Not Implemented",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/review": {
+      "get": {
+        "tags": [
+          "Dashboard"
+        ],
+        "operationId": "GetReview",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/ReviewItemDto"
+                  }
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "Not Implemented",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/review/{id}/skip": {
+      "post": {
+        "tags": [
+          "Dashboard"
+        ],
+        "operationId": "SkipReview",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "format": "uuid"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MutationResultDto"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "Not Implemented",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/search": {
+      "get": {
+        "tags": [
+          "Dashboard"
+        ],
+        "operationId": "Search",
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "type",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "categoryId",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
+          },
+          {
+            "name": "from",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SearchResultDto"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "Not Implemented",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/receipts": {
+      "get": {
+        "tags": [
+          "Dashboard"
+        ],
+        "operationId": "GetReceipts",
+        "parameters": [
+          {
+            "name": "month",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReceiptsDto"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "Not Implemented",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/receipts/export.csv": {
+      "get": {
+        "tags": [
+          "Dashboard"
+        ],
+        "operationId": "ExportReceipts",
+        "parameters": [
+          {
+            "name": "month",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "501": {
+            "description": "Not Implemented",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          },
+          "200": {
+            "description": "OK",
+            "content": {
+              "text/csv": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/categories": {
+      "get": {
+        "tags": [
+          "Dashboard"
+        ],
+        "operationId": "GetCategories",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/CategoryDto"
+                  }
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "Not Implemented",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Dashboard"
+        ],
+        "operationId": "CreateCategory",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateCategoryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CategoryDto"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "Not Implemented",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/categories/{id}": {
+      "put": {
+        "tags": [
+          "Dashboard"
+        ],
+        "operationId": "UpdateCategory",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateCategoryRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CategoryDto"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "Not Implemented",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Dashboard"
+        ],
+        "operationId": "DeleteCategory",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MutationResultDto"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "Not Implemented",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/folders": {
+      "get": {
+        "tags": [
+          "Dashboard"
+        ],
+        "operationId": "GetFolders",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/FolderDto"
+                  }
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "Not Implemented",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Dashboard"
+        ],
+        "operationId": "CreateFolder",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateFolderRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FolderDto"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "Not Implemented",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/folders/check": {
+      "post": {
+        "tags": [
+          "Dashboard"
+        ],
+        "operationId": "CheckFolder",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CheckFolderRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FolderCheckDto"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "Not Implemented",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/folders/{id}": {
+      "patch": {
+        "tags": [
+          "Dashboard"
+        ],
+        "operationId": "UpdateFolder",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateFolderRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FolderDto"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "Not Implemented",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Dashboard"
+        ],
+        "operationId": "DeleteFolder",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MutationResultDto"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "Not Implemented",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/folders/{id}/tidy-existing": {
+      "post": {
+        "tags": [
+          "Dashboard"
+        ],
+        "operationId": "TidyExisting",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TidyResultDto"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "Not Implemented",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/system/pick-folder": {
+      "post": {
+        "tags": [
+          "Dashboard"
+        ],
+        "operationId": "PickFolder",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PickFolderResultDto"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "Not Implemented",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/settings": {
+      "get": {
+        "tags": [
+          "Dashboard"
+        ],
+        "operationId": "GetSettings",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingsDto"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "Not Implemented",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Dashboard"
+        ],
+        "operationId": "UpdateSettings",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/UpdateSettingsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingsDto"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "Not Implemented",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/setup": {
+      "get": {
+        "tags": [
+          "Dashboard"
+        ],
+        "operationId": "GetSetup",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetupDto"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "Not Implemented",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/setup/complete": {
+      "post": {
+        "tags": [
+          "Dashboard"
+        ],
+        "operationId": "CompleteSetup",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CompleteSetupRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SetupDto"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "Not Implemented",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/phone": {
+      "get": {
+        "tags": [
+          "Dashboard"
+        ],
+        "operationId": "GetPhone",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PhoneDto"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "Not Implemented",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/phone/rotate": {
+      "post": {
+        "tags": [
+          "Dashboard"
+        ],
+        "operationId": "RotatePhone",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PhoneDto"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "Not Implemented",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/ignored": {
+      "get": {
+        "tags": [
+          "Dashboard"
+        ],
+        "operationId": "GetIgnored",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/IgnoredFileDto"
+                  }
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "Not Implemented",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/ignored/{sha256}": {
+      "delete": {
+        "tags": [
+          "Dashboard"
+        ],
+        "operationId": "AllowIgnored",
+        "parameters": [
+          {
+            "name": "sha256",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MutationResultDto"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "Not Implemented",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/search-data/rebuild": {
+      "post": {
+        "tags": [
+          "Dashboard"
+        ],
+        "operationId": "RebuildSearchData",
+        "responses": {
+          "200": {
+            "description": "OK",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RebuildResultDto"
+                }
+              }
+            }
+          },
+          "501": {
+            "description": "Not Implemented",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ProblemDetails"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "ActionDto": {
+        "required": [
+          "id",
+          "kind",
+          "fromPath",
+          "toPath",
+          "status",
+          "at",
+          "error"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "kind": {
+            "$ref": "#/components/schemas/ActionKind"
+          },
+          "fromPath": {
+            "type": "string"
+          },
+          "toPath": {
+            "type": "string"
+          },
+          "status": {
+            "$ref": "#/components/schemas/ActionStatus"
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "error": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "ActionKind": {
+        "enum": [
+          "move",
+          "copy",
+          "undo_move",
+          "delete_copy"
+        ]
+      },
+      "ActionStatus": {
+        "enum": [
+          "pending",
+          "done",
+          "failed"
+        ]
+      },
+      "ActivityItemDto": {
+        "required": [
+          "fileId",
+          "at",
+          "status",
+          "type",
+          "category",
+          "title",
+          "newName",
+          "folder",
+          "origin",
+          "folderLabel",
+          "thumbUrl",
+          "canUndo"
+        ],
+        "type": "object",
+        "properties": {
+          "fileId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "status": {
+            "$ref": "#/components/schemas/FileStatus"
+          },
+          "type": {
+            "$ref": "#/components/schemas/FileKind"
+          },
+          "category": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "newName": {
+            "type": "string"
+          },
+          "folder": {
+            "type": "string"
+          },
+          "origin": {
+            "$ref": "#/components/schemas/FileOrigin"
+          },
+          "folderLabel": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "thumbUrl": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "canUndo": {
+            "type": "boolean"
+          }
+        }
+      },
+      "ActivityPageDto": {
+        "required": [
+          "items",
+          "nextCursor"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ActivityItemDto"
+            }
+          },
+          "nextCursor": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "CategoryDto": {
+        "required": [
+          "id",
+          "type",
+          "name",
+          "description",
+          "folder",
+          "isSystem",
+          "fileCount"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "type": {
+            "$ref": "#/components/schemas/FileKind"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "folder": {
+            "type": "string"
+          },
+          "isSystem": {
+            "type": "boolean"
+          },
+          "fileCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "CategoryTotalDto": {
+        "required": [
+          "categoryId",
+          "category",
+          "currency",
+          "amount"
+        ],
+        "type": "object",
+        "properties": {
+          "categoryId": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "category": {
+            "type": "string"
+          },
+          "currency": {
+            "type": "string"
+          },
+          "amount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ],
+            "format": "double"
+          }
+        }
+      },
+      "CheckFolderRequest": {
+        "required": [
+          "path"
+        ],
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          }
+        }
+      },
+      "CompleteSetupRequest": {
+        "required": [
+          "outputRoot",
+          "folders",
+          "finishAnyway"
+        ],
+        "type": "object",
+        "properties": {
+          "outputRoot": {
+            "type": "string"
+          },
+          "folders": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InitialFolderDto"
+            }
+          },
+          "finishAnyway": {
+            "type": "boolean"
+          }
+        }
+      },
+      "CreateCategoryRequest": {
+        "required": [
+          "type",
+          "name",
+          "description",
+          "folder"
+        ],
+        "type": "object",
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/FileKind"
+          },
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "folder": {
+            "type": "string"
+          }
+        }
+      },
+      "CreateFolderRequest": {
+        "required": [
+          "path",
+          "mode",
+          "tidyExisting"
+        ],
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/FolderMode"
+          },
+          "tidyExisting": {
+            "type": "boolean"
+          },
+          "label": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "CurrencyTotalDto": {
+        "required": [
+          "currency",
+          "amount",
+          "count"
+        ],
+        "type": "object",
+        "properties": {
+          "currency": {
+            "type": "string"
+          },
+          "amount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "count": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "DayCountDto": {
+        "required": [
+          "date",
+          "count"
+        ],
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "format": "date"
+          },
+          "count": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "FileDetailsDto": {
+        "required": [
+          "file",
+          "originalName",
+          "originalPath",
+          "currentPath",
+          "caption",
+          "sizeBytes",
+          "categoryId",
+          "reviewReason",
+          "receipt",
+          "history"
+        ],
+        "type": "object",
+        "properties": {
+          "file": {
+            "$ref": "#/components/schemas/ActivityItemDto"
+          },
+          "originalName": {
+            "type": "string"
+          },
+          "originalPath": {
+            "type": "string"
+          },
+          "currentPath": {
+            "type": "string"
+          },
+          "caption": {
+            "type": "string"
+          },
+          "sizeBytes": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          },
+          "categoryId": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "reviewReason": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ReviewReason"
+              }
+            ]
+          },
+          "receipt": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ReceiptDto"
+              }
+            ]
+          },
+          "history": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ActionDto"
+            }
+          }
+        }
+      },
+      "FileDuplicateEvent": {
+        "required": [
+          "duplicateOf",
+          "fileId",
+          "at",
+          "status",
+          "type",
+          "category",
+          "title",
+          "newName",
+          "folder",
+          "origin",
+          "folderLabel",
+          "thumbUrl",
+          "canUndo"
+        ],
+        "type": "object",
+        "properties": {
+          "duplicateOf": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "fileId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "status": {
+            "enum": [
+              "filed",
+              "review",
+              "duplicate",
+              "undone"
+            ]
+          },
+          "type": {
+            "enum": [
+              "receipt",
+              "screenshot",
+              "document",
+              "other",
+              "unknown"
+            ]
+          },
+          "category": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "newName": {
+            "type": "string"
+          },
+          "folder": {
+            "type": "string"
+          },
+          "origin": {
+            "enum": [
+              "folder",
+              "phone"
+            ]
+          },
+          "folderLabel": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "thumbUrl": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "canUndo": {
+            "type": "boolean"
+          }
+        }
+      },
+      "FileFiledEvent": {
+        "required": [
+          "fileId",
+          "at",
+          "status",
+          "type",
+          "category",
+          "title",
+          "newName",
+          "folder",
+          "origin",
+          "folderLabel",
+          "thumbUrl",
+          "canUndo"
+        ],
+        "type": "object",
+        "properties": {
+          "fileId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "status": {
+            "enum": [
+              "filed",
+              "review",
+              "duplicate",
+              "undone"
+            ]
+          },
+          "type": {
+            "enum": [
+              "receipt",
+              "screenshot",
+              "document",
+              "other",
+              "unknown"
+            ]
+          },
+          "category": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "newName": {
+            "type": "string"
+          },
+          "folder": {
+            "type": "string"
+          },
+          "origin": {
+            "enum": [
+              "folder",
+              "phone"
+            ]
+          },
+          "folderLabel": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "thumbUrl": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "canUndo": {
+            "type": "boolean"
+          }
+        }
+      },
+      "FileKind": {
+        "enum": [
+          "receipt",
+          "screenshot",
+          "document",
+          "other",
+          "unknown"
+        ]
+      },
+      "FileOrigin": {
+        "enum": [
+          "folder",
+          "phone"
+        ]
+      },
+      "FileRefiledEvent": {
+        "required": [
+          "fileId",
+          "at",
+          "status",
+          "type",
+          "category",
+          "title",
+          "newName",
+          "folder",
+          "origin",
+          "folderLabel",
+          "thumbUrl",
+          "canUndo"
+        ],
+        "type": "object",
+        "properties": {
+          "fileId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "status": {
+            "enum": [
+              "filed",
+              "review",
+              "duplicate",
+              "undone"
+            ]
+          },
+          "type": {
+            "enum": [
+              "receipt",
+              "screenshot",
+              "document",
+              "other",
+              "unknown"
+            ]
+          },
+          "category": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "newName": {
+            "type": "string"
+          },
+          "folder": {
+            "type": "string"
+          },
+          "origin": {
+            "enum": [
+              "folder",
+              "phone"
+            ]
+          },
+          "folderLabel": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "thumbUrl": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "canUndo": {
+            "type": "boolean"
+          }
+        }
+      },
+      "FileReviewEvent": {
+        "required": [
+          "reason",
+          "fileId",
+          "at",
+          "status",
+          "type",
+          "category",
+          "title",
+          "newName",
+          "folder",
+          "origin",
+          "folderLabel",
+          "thumbUrl",
+          "canUndo"
+        ],
+        "type": "object",
+        "properties": {
+          "reason": {
+            "enum": [
+              "bad_output",
+              "unknown_type",
+              "missing_date",
+              "missing_amount",
+              "heic",
+              "scanned_pdf",
+              "password_protected"
+            ]
+          },
+          "fileId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "status": {
+            "enum": [
+              "filed",
+              "review",
+              "duplicate",
+              "undone"
+            ]
+          },
+          "type": {
+            "enum": [
+              "receipt",
+              "screenshot",
+              "document",
+              "other",
+              "unknown"
+            ]
+          },
+          "category": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "newName": {
+            "type": "string"
+          },
+          "folder": {
+            "type": "string"
+          },
+          "origin": {
+            "enum": [
+              "folder",
+              "phone"
+            ]
+          },
+          "folderLabel": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "thumbUrl": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "canUndo": {
+            "type": "boolean"
+          }
+        }
+      },
+      "FileStatus": {
+        "enum": [
+          "filed",
+          "review",
+          "duplicate",
+          "undone"
+        ]
+      },
+      "FileUndoneEvent": {
+        "required": [
+          "fileId"
+        ],
+        "type": "object",
+        "properties": {
+          "fileId": {
+            "type": "string",
+            "format": "uuid"
+          }
+        }
+      },
+      "FolderCheckDto": {
+        "required": [
+          "accepted",
+          "reason",
+          "copyOnly",
+          "existingFileCount"
+        ],
+        "type": "object",
+        "properties": {
+          "accepted": {
+            "type": "boolean"
+          },
+          "reason": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "copyOnly": {
+            "type": "boolean"
+          },
+          "existingFileCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "FolderDto": {
+        "required": [
+          "id",
+          "path",
+          "label",
+          "mode",
+          "isCloud",
+          "enabled",
+          "filedCount",
+          "baselineCount",
+          "missing"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "path": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/FolderMode"
+          },
+          "isCloud": {
+            "type": "boolean"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "filedCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "baselineCount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "missing": {
+            "type": "boolean"
+          }
+        }
+      },
+      "FolderMode": {
+        "enum": [
+          "move",
+          "copy"
+        ]
+      },
+      "FolderTidyProgressEvent": {
+        "required": [
+          "folderId",
+          "done",
+          "total"
+        ],
+        "type": "object",
+        "properties": {
+          "folderId": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "done": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "total": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "IFormFile": {
+        "type": "string",
+        "format": "binary"
+      },
+      "IgnoredFileDto": {
+        "required": [
+          "sha256",
+          "fileName",
+          "at",
+          "reason"
+        ],
+        "type": "object",
+        "properties": {
+          "sha256": {
+            "type": "string"
+          },
+          "fileName": {
+            "type": "string"
+          },
+          "at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "reason": {
+            "type": "string"
+          }
+        }
+      },
+      "InitialFolderDto": {
+        "required": [
+          "path",
+          "label",
+          "mode"
+        ],
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "label": {
+            "type": "string"
+          },
+          "mode": {
+            "$ref": "#/components/schemas/FolderMode"
+          }
+        }
+      },
+      "LazinessSettings": {
+        "type": "object",
+        "properties": {
+          "receiptSeconds": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32",
+            "default": 30
+          },
+          "screenshotSeconds": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32",
+            "default": 15
+          },
+          "documentSeconds": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32",
+            "default": 15
+          },
+          "otherSeconds": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32",
+            "default": 5
+          }
+        }
+      },
+      "LazinessStatsDto": {
+        "required": [
+          "filesFiled",
+          "minutesSaved",
+          "receiptsLogged",
+          "receiptTotals",
+          "duplicatesCaught",
+          "days",
+          "secondsPerType"
+        ],
+        "type": "object",
+        "properties": {
+          "filesFiled": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "minutesSaved": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "receiptsLogged": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "receiptTotals": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CurrencyTotalDto"
+            }
+          },
+          "duplicatesCaught": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "days": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DayCountDto"
+            }
+          },
+          "secondsPerType": {
+            "$ref": "#/components/schemas/LazinessSettings"
+          }
+        }
+      },
+      "ModelStatusDto": {
+        "required": [
+          "name",
+          "present",
+          "loaded",
+          "onGpu"
+        ],
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "present": {
+            "type": "boolean"
+          },
+          "loaded": {
+            "type": "boolean"
+          },
+          "onGpu": {
+            "type": "boolean"
+          }
+        }
+      },
+      "MutationResultDto": {
+        "required": [
+          "success",
+          "message"
+        ],
+        "type": "object",
+        "properties": {
+          "success": {
+            "type": "boolean"
+          },
+          "message": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "PaymentMethod": {
+        "enum": [
+          "upi",
+          "card",
+          "cash",
+          "netbanking",
+          "unknown"
+        ]
+      },
+      "PhoneDto": {
+        "required": [
+          "enabled",
+          "url",
+          "qrSvg",
+          "firewallRulePresent"
+        ],
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "url": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "qrSvg": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "firewallRulePresent": {
+            "type": "boolean"
+          }
+        }
+      },
+      "PhoneUploadRequest": {
+        "required": [
+          "file"
+        ],
+        "type": "object",
+        "properties": {
+          "file": {
+            "$ref": "#/components/schemas/IFormFile"
+          }
+        }
+      },
+      "PhoneUploadResultDto": {
+        "required": [
+          "fileName",
+          "received"
+        ],
+        "type": "object",
+        "properties": {
+          "fileName": {
+            "type": "string"
+          },
+          "received": {
+            "type": "boolean"
+          }
+        }
+      },
+      "PickFolderResultDto": {
+        "required": [
+          "path"
+        ],
+        "type": "object",
+        "properties": {
+          "path": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "ProblemDetails": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "title": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "status": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "detail": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "instance": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "QueueChangedEvent": {
+        "required": [
+          "waiting",
+          "processing"
+        ],
+        "type": "object",
+        "properties": {
+          "waiting": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "processing": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "RebuildResultDto": {
+        "required": [
+          "queued"
+        ],
+        "type": "object",
+        "properties": {
+          "queued": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "ReceiptDto": {
+        "required": [
+          "vendor",
+          "date",
+          "amount",
+          "currency",
+          "paymentMethod"
+        ],
+        "type": "object",
+        "properties": {
+          "vendor": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "date": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date"
+          },
+          "amount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "currency": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "paymentMethod": {
+            "$ref": "#/components/schemas/PaymentMethod"
+          }
+        }
+      },
+      "ReceiptRowDto": {
+        "required": [
+          "fileId",
+          "vendor",
+          "date",
+          "amount",
+          "currency",
+          "paymentMethod",
+          "categoryId",
+          "category"
+        ],
+        "type": "object",
+        "properties": {
+          "fileId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "vendor": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "date": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date"
+          },
+          "amount": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "currency": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "paymentMethod": {
+            "$ref": "#/components/schemas/PaymentMethod"
+          },
+          "categoryId": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "category": {
+            "type": "string"
+          }
+        }
+      },
+      "ReceiptsDto": {
+        "required": [
+          "month",
+          "items",
+          "totals",
+          "categories"
+        ],
+        "type": "object",
+        "properties": {
+          "month": {
+            "type": "string"
+          },
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ReceiptRowDto"
+            }
+          },
+          "totals": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CurrencyTotalDto"
+            }
+          },
+          "categories": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CategoryTotalDto"
+            }
+          }
+        }
+      },
+      "RefileRequest": {
+        "required": [
+          "type",
+          "categoryId"
+        ],
+        "type": "object",
+        "properties": {
+          "type": {
+            "$ref": "#/components/schemas/FileKind"
+          },
+          "categoryId": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "title": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "receipt": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/ReceiptDto"
+              }
+            ]
+          }
+        }
+      },
+      "ReviewItemDto": {
+        "required": [
+          "file",
+          "reason"
+        ],
+        "type": "object",
+        "properties": {
+          "file": {
+            "$ref": "#/components/schemas/FileDetailsDto"
+          },
+          "reason": {
+            "$ref": "#/components/schemas/ReviewReason"
+          }
+        }
+      },
+      "ReviewReason": {
+        "enum": [
+          "bad_output",
+          "unknown_type",
+          "missing_date",
+          "missing_amount",
+          "heic",
+          "scanned_pdf",
+          "password_protected",
+          null
+        ]
+      },
+      "SearchHitDto": {
+        "required": [
+          "file",
+          "score",
+          "matchedWords",
+          "matchedMeaning"
+        ],
+        "type": "object",
+        "properties": {
+          "file": {
+            "$ref": "#/components/schemas/FileDetailsDto"
+          },
+          "score": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "matchedWords": {
+            "type": "boolean"
+          },
+          "matchedMeaning": {
+            "type": "boolean"
+          }
+        }
+      },
+      "SearchResultDto": {
+        "required": [
+          "items"
+        ],
+        "type": "object",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SearchHitDto"
+            }
+          }
+        }
+      },
+      "ServiceStatusDto": {
+        "required": [
+          "ready",
+          "message"
+        ],
+        "type": "object",
+        "properties": {
+          "ready": {
+            "type": "boolean"
+          },
+          "message": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "SettingsDto": {
+        "required": [
+          "startAtLogin",
+          "laziness",
+          "ollamaUrl"
+        ],
+        "type": "object",
+        "properties": {
+          "startAtLogin": {
+            "type": "boolean"
+          },
+          "laziness": {
+            "$ref": "#/components/schemas/LazinessSettings"
+          },
+          "ollamaUrl": {
+            "type": "string"
+          }
+        }
+      },
+      "SetupDto": {
+        "required": [
+          "complete",
+          "outputRoot",
+          "suggestedFolders",
+          "status",
+          "nativePickerAvailable"
+        ],
+        "type": "object",
+        "properties": {
+          "complete": {
+            "type": "boolean"
+          },
+          "outputRoot": {
+            "type": "string"
+          },
+          "suggestedFolders": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/InitialFolderDto"
+            }
+          },
+          "status": {
+            "$ref": "#/components/schemas/StatusDto"
+          },
+          "nativePickerAvailable": {
+            "type": "boolean"
+          }
+        }
+      },
+      "StatusChangedEvent": {
+        "required": [
+          "gemma",
+          "visionModel",
+          "embeddingModel",
+          "database",
+          "queue",
+          "paused",
+          "setupComplete",
+          "averageSecondsPerFileToday"
+        ],
+        "type": "object",
+        "properties": {
+          "gemma": {
+            "required": [
+              "ready",
+              "message"
+            ],
+            "type": "object",
+            "properties": {
+              "ready": {
+                "type": "boolean"
+              },
+              "message": {
+                "type": [
+                  "null",
+                  "string"
+                ]
+              }
+            }
+          },
+          "visionModel": {
+            "required": [
+              "name",
+              "present",
+              "loaded",
+              "onGpu"
+            ],
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "present": {
+                "type": "boolean"
+              },
+              "loaded": {
+                "type": "boolean"
+              },
+              "onGpu": {
+                "type": "boolean"
+              }
+            }
+          },
+          "embeddingModel": {
+            "required": [
+              "name",
+              "present",
+              "loaded",
+              "onGpu"
+            ],
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "present": {
+                "type": "boolean"
+              },
+              "loaded": {
+                "type": "boolean"
+              },
+              "onGpu": {
+                "type": "boolean"
+              }
+            }
+          },
+          "database": {
+            "required": [
+              "ready",
+              "message"
+            ],
+            "type": "object",
+            "properties": {
+              "ready": {
+                "type": "boolean"
+              },
+              "message": {
+                "type": [
+                  "null",
+                  "string"
+                ]
+              }
+            }
+          },
+          "queue": {
+            "required": [
+              "waiting",
+              "processing"
+            ],
+            "type": "object",
+            "properties": {
+              "waiting": {
+                "pattern": "^-?(?:0|[1-9]\\d*)$",
+                "type": [
+                  "integer",
+                  "string"
+                ],
+                "format": "int32"
+              },
+              "processing": {
+                "pattern": "^-?(?:0|[1-9]\\d*)$",
+                "type": [
+                  "integer",
+                  "string"
+                ],
+                "format": "int32"
+              }
+            }
+          },
+          "paused": {
+            "type": "boolean"
+          },
+          "setupComplete": {
+            "type": "boolean"
+          },
+          "averageSecondsPerFileToday": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          }
+        }
+      },
+      "StatusDto": {
+        "required": [
+          "gemma",
+          "visionModel",
+          "embeddingModel",
+          "database",
+          "queue",
+          "paused",
+          "setupComplete",
+          "averageSecondsPerFileToday"
+        ],
+        "type": "object",
+        "properties": {
+          "gemma": {
+            "$ref": "#/components/schemas/ServiceStatusDto"
+          },
+          "visionModel": {
+            "$ref": "#/components/schemas/ModelStatusDto"
+          },
+          "embeddingModel": {
+            "$ref": "#/components/schemas/ModelStatusDto"
+          },
+          "database": {
+            "$ref": "#/components/schemas/ServiceStatusDto"
+          },
+          "queue": {
+            "$ref": "#/components/schemas/QueueChangedEvent"
+          },
+          "paused": {
+            "type": "boolean"
+          },
+          "setupComplete": {
+            "type": "boolean"
+          },
+          "averageSecondsPerFileToday": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "null",
+              "number",
+              "string"
+            ],
+            "format": "double"
+          }
+        }
+      },
+      "TidyResultDto": {
+        "required": [
+          "folderId",
+          "queued"
+        ],
+        "type": "object",
+        "properties": {
+          "folderId": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "queued": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "UndoBatchResultDto": {
+        "required": [
+          "undone",
+          "results"
+        ],
+        "type": "object",
+        "properties": {
+          "undone": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "results": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UndoResultDto"
+            }
+          }
+        }
+      },
+      "UndoResultDto": {
+        "required": [
+          "fileId",
+          "success",
+          "restoredPath",
+          "reason"
+        ],
+        "type": "object",
+        "properties": {
+          "fileId": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "success": {
+            "type": "boolean"
+          },
+          "restoredPath": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "reason": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "UndoSinceRequest": {
+        "required": [
+          "since"
+        ],
+        "type": "object",
+        "properties": {
+          "since": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      },
+      "UpdateCategoryRequest": {
+        "required": [
+          "name",
+          "description",
+          "folder"
+        ],
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string"
+          },
+          "description": {
+            "type": "string"
+          },
+          "folder": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "UpdateFolderRequest": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "mode": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/FolderMode"
+              }
+            ]
+          },
+          "label": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "UpdateSettingsRequest": {
+        "required": [
+          "startAtLogin",
+          "laziness",
+          "ollamaUrl"
+        ],
+        "type": "object",
+        "properties": {
+          "startAtLogin": {
+            "type": "boolean"
+          },
+          "laziness": {
+            "$ref": "#/components/schemas/LazinessSettings"
+          },
+          "ollamaUrl": {
+            "type": "string"
+          }
+        }
+      }
+    }
+  },
+  "tags": [
+    {
+      "name": "Events"
+    },
+    {
+      "name": "Phone"
+    },
+    {
+      "name": "Dashboard"
+    }
+  ]
+}

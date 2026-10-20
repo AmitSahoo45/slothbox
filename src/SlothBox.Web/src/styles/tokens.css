@@ -1,0 +1,75 @@
+@import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --font-sans: "Atkinson Hyperlegible Next", system-ui, sans-serif;
+  --font-mono: "Atkinson Hyperlegible Mono", ui-monospace, monospace;
+  --color-mist: #EEF2EF;
+  --color-leaf: #FFFFFF;
+  --color-leaf-raised: #F6F9F7;
+  --color-line: #D5DED8;
+  --color-ink: #17261D;
+  --color-ink-muted: #55625A;
+  --color-moss: #2E6B47;
+  --color-moss-tint: #DDEBE2;
+  --color-sun: #8A5A12;
+  --color-sun-tint: #FBEFD9;
+  --color-rain: #2F6690;
+  --color-rain-tint: #DCE9F3;
+  --color-ember: #B3423A;
+  --color-ember-tint: #F8E1DE;
+  --radius-chip: 4px;
+  --radius-control: 6px;
+  --radius-panel: 10px;
+  --radius-overlay: 12px;
+  --ease-sloth: cubic-bezier(0.22, 1, 0.36, 1);
+  --text-display: 36px;
+  --text-display--line-height: 44px;
+  --text-title: 24px;
+  --text-title--line-height: 32px;
+  --text-heading: 18px;
+  --text-heading--line-height: 24px;
+  --text-body: 16px;
+  --text-body--line-height: 24px;
+  --text-small: 14px;
+  --text-small--line-height: 20px;
+  --text-literal: 15px;
+  --text-literal--line-height: 22px;
+  --text-path: 13px;
+  --text-path--line-height: 20px;
+}
+
+:root {
+  --color-on-primary: #FFFFFF;
+  --shadow-overlay: 0 8px 24px rgb(15 26 20 / 0.16);
+  --motion-quick: 120ms;
+  --motion-settle: 280ms;
+  --motion-arrival: 600ms;
+}
+
+.dark {
+  --color-mist: #0F1A14;
+  --color-leaf: #16241B;
+  --color-leaf-raised: #1D2E23;
+  --color-line: #2A3D31;
+  --color-ink: #E3ECE5;
+  --color-ink-muted: #9DB0A3;
+  --color-moss: #6FBF8B;
+  --color-moss-tint: #1F3A2A;
+  --color-sun: #E3A944;
+  --color-sun-tint: #3A2D14;
+  --color-rain: #7FB2DA;
+  --color-rain-tint: #1A2D3D;
+  --color-ember: #E57A70;
+  --color-ember-tint: #3B1E1B;
+  --color-on-primary: #0F1A14;
+  --shadow-overlay: 0 8px 24px rgb(0 0 0 / 0.5);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0s !important;
+    transition-duration: 0s !important;
+    scroll-behavior: auto !important;
+  }
+}
