@@ -1,13 +1,20 @@
 import { http, HttpResponse } from 'msw'
 import { handlers } from './handlers'
 import { status } from './fixtures'
-import type { Schema } from '../api/types'
+import type { MockEvent, Schema } from '../api/types'
+import { createBatch2Handlers } from './batch2-handlers'
 
 export function createBrowserHandlers() {
   let current: Schema['StatusDto'] = structuredClone(status)
   const subscribers = new Set<ReadableStreamDefaultController<Uint8Array>>()
   const encoder = new TextEncoder()
   const statusEvent = () => encoder.encode(`event: status.changed\ndata: ${JSON.stringify(current)}\n\n`)
+  const publish = (event: MockEvent) => {
+    for (const subscriber of subscribers) {
+      try { subscriber.enqueue(encoder.encode(`event: ${event.event}\ndata: ${JSON.stringify(event.data)}\n\n`)) }
+      catch { subscribers.delete(subscriber) }
+    }
+  }
   const control = (paused: boolean) => ({ request }: { request: Request }) => {
     if (request.headers.get('X-SlothBox') !== '1') {
       return HttpResponse.json({ title: 'Missing X-SlothBox header', status: 403 }, { status: 403 })
@@ -45,6 +52,7 @@ export function createBrowserHandlers() {
         'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache',
       } })
     }),
+    ...createBatch2Handlers(publish),
     ...handlers,
   ]
 }

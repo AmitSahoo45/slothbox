@@ -1316,6 +1316,12 @@ Three steps, in order. Moving back is allowed until "Finish setup".
 2. A confirm dialog follows: "Undo 12 actions since 10:30?" with [Undo 12 actions] [Cancel].
 3. Toast: "Undone 12 actions".
 
+**Track U integration note:** the fixed contract returns the action count only
+after undo executes. Until a preview/count operation is available, the
+confirmation says "Undo actions since {time}?" with [Undo actions] [Cancel],
+then reports the actual returned count. It never counts visible activity rows
+as actions. Any failed results are shown separately with their reasons.
+
 **Empty state:** "Nothing filed yet. Save a file to a watched folder, take a screenshot, or send one from your phone." with [Show phone QR code].
 
 #### 7.4.3 Needs review (`/review`)
@@ -1705,6 +1711,10 @@ src/SlothBox.Web/
   the mock SSE connection stays open. API types are generated before either
   development command. The worker is served only by development middleware;
   production bundles contain no mock handlers, fixtures or worker.
+- The development fixtures include paginated activity and a review queue.
+  Skip, refile and Undo retain their synthetic state for the page session and
+  publish SSE updates. Open and Show in folder acknowledge the request without
+  accessing local files.
 
 **Build**
 - `npm run build` writes to `src/SlothBox.Server/wwwroot`, which is git-ignored.

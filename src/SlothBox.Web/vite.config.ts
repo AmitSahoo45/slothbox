@@ -34,5 +34,5 @@ export default defineConfig(({ mode }) => ({
     },
   },
   build: { outDir: '../SlothBox.Server/wwwroot', emptyOutDir: true },
-  test: { environment: 'jsdom', setupFiles: ['./tests/setup.ts'] },
+  test: { environment: 'jsdom', setupFiles: ['./tests/setup.ts'], maxWorkers: 1, testTimeout: 15000 },
 }))

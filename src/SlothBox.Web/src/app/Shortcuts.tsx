@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom'
 import * as Dialog from '@radix-ui/react-dialog'
 import { Keyboard, X } from 'lucide-react'
 import { Button } from '../components/Button'
+import { ToastHost } from '../components/ToastHost'
 
 export function Shortcuts() {
   const [open, setOpen] = useState(false)
@@ -43,7 +44,7 @@ export function Shortcuts() {
       }}>
         <div className="dialog-heading">
           <Dialog.Title>Keyboard shortcuts</Dialog.Title>
-          <Dialog.Close asChild><Button variant="quiet" aria-label="Close shortcuts">
+          <Dialog.Close asChild><Button variant="quiet" data-dialog-dismiss aria-label="Close shortcuts">
             <X aria-hidden="true" size={20} strokeWidth={1.75} />
           </Button></Dialog.Close>
         </div>
@@ -53,7 +54,12 @@ export function Shortcuts() {
           <dt><kbd>?</kbd></dt><dd>Show keyboard shortcuts</dd>
           <dt><kbd>Esc</kbd></dt><dd>Close a drawer or dialog</dd>
           <dt><kbd>F8</kbd></dt><dd>Go to notifications</dd>
+          <dt><kbd>1–9</kbd></dt><dd>Pick a category in Needs review</dd>
+          <dt><kbd>Enter</kbd></dt><dd>File the current review item</dd>
+          <dt><kbd>S</kbd></dt><dd>Skip the current review item</dd>
+          <dt><kbd>O</kbd></dt><dd>Open a file in Needs review or the drawer</dd>
         </dl>
+        <ToastHost />
       </Dialog.Content>
     </Dialog.Portal>
   </Dialog.Root>

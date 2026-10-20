@@ -48,9 +48,18 @@ export function useServerEvents() {
         previous ? { ...previous, queue } : previous)
     })
     for (const name of fileEvents) {
-      listen(name, () => {
-        for (const key of ['activity', 'review', 'stats', 'files', 'receipts', 'search']) {
-          void client.invalidateQueries({ queryKey: [key] })
+      listen(name, data => {
+        window.dispatchEvent(new CustomEvent('slothbox:file-event', { detail: { name, data } }))
+        // The visible feed consumes events without jumping; refresh it on the next visit.
+        if (name === 'file.undone') {
+          void client.cancelQueries({ queryKey: ['activity'] })
+            .then(() => client.invalidateQueries({ queryKey: ['activity'] }))
+        } else {
+          void client.invalidateQueries({ queryKey: ['activity'], refetchType: 'none' })
+        }
+        for (const key of ['review', 'stats', 'files', 'receipts', 'search', 'categories']) {
+          void client.cancelQueries({ queryKey: [key] })
+            .then(() => client.invalidateQueries({ queryKey: [key] }))
         }
       })
     }

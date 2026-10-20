@@ -8,6 +8,9 @@ import { Sidebar } from './Sidebar'
 import { Banners } from './Banners'
 import { navigation } from './navigation'
 import { Shortcuts } from './Shortcuts'
+import { Today } from '../pages/Today/Today'
+import { Review } from '../pages/Review/Review'
+import { FileDrawer } from '../components/FileDrawer/FileDrawer'
 
 export function Layout() {
   const status = useQuery(statusQuery)
@@ -37,6 +40,9 @@ export function Layout() {
         disconnected={disconnected} busy={control.isPending}
         onCheck={() => { void status.refetch() }} onResume={() => changeQueue('resume')} />
       <div className="page-heading"><h1 id="page-title" tabIndex={-1}>{title}</h1><Shortcuts /></div>
+      {pathname === '/' && status.data?.setupComplete && <Today />}
+      {pathname === '/review' && status.data?.setupComplete && <Review />}
     </main>
+    <FileDrawer />
   </div>
 }

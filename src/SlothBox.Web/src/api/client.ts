@@ -11,6 +11,9 @@ type JsonPath<M extends Method> = {
 type JsonBody<Operation> = Operation extends {
   requestBody: { content: { 'application/json': infer Body } }
 } ? Body : never
+type ParametersFor<Operation, Kind extends 'path' | 'query'> =
+  Operation extends { parameters: infer Parameters }
+    ? Kind extends keyof Parameters ? Parameters[Kind] : never : never
 
 export class ApiError extends Error {
   constructor(public status: number, message: string) { super(message) }
@@ -18,12 +21,25 @@ export class ApiError extends Error {
 
 export async function request<M extends Method, P extends JsonPath<M>>(
   method: M, path: P,
-  options: { signal?: AbortSignal; body?: JsonBody<paths[P][M]> } = {},
+  options: {
+    signal?: AbortSignal; body?: JsonBody<paths[P][M]>
+    path?: ParametersFor<paths[P][M], 'path'>
+    query?: ParametersFor<paths[P][M], 'query'>
+  } = {},
 ): Promise<JsonResult<paths[P][M]>> {
   const headers = new Headers({ Accept: 'application/json' })
   if (method !== 'get') headers.set('X-SlothBox', '1')
   if (options.body !== undefined) headers.set('Content-Type', 'application/json')
-  const response = await fetch(new URL(path, window.location.origin), {
+  let resolvedPath: string = path
+  for (const [name, value] of Object.entries(options.path ?? {})) {
+    resolvedPath = resolvedPath.replace(`{${name}}`, encodeURIComponent(String(value)))
+  }
+  if (resolvedPath.includes('{')) throw new Error('A required URL parameter is missing.')
+  const url = new URL(resolvedPath, window.location.origin)
+  for (const [name, value] of Object.entries(options.query ?? {})) {
+    if (value !== undefined && value !== null) url.searchParams.set(name, String(value))
+  }
+  const response = await fetch(url, {
     method: method.toUpperCase(), headers, signal: options.signal,
     credentials: 'same-origin',
     body: options.body === undefined ? undefined : JSON.stringify(options.body),
