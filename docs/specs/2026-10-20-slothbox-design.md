@@ -1105,12 +1105,12 @@ Seeded on first run. Users can edit, rename or add more on the Categories page (
 | `sun-tint` | `#FBEFD9` | `#3A2D14` | Needs review backgrounds |
 | `rain` | `#2F6690` | `#7FB2DA` | Screenshots, information |
 | `rain-tint` | `#DCE9F3` | `#1A2D3D` | Information backgrounds |
-| `ember` | `#B3423A` | `#E57A70` | Errors, destructive actions |
+| `ember` | `#B1423A` | `#E57A70` | Errors, destructive actions |
 | `ember-tint` | `#F8E1DE` | `#3B1E1B` | Error backgrounds |
 
 - **Text on primary buttons:** `#FFFFFF` on `moss` (light); `#0F1A14` on `moss` (dark).
 - **Type colours on chips:** receipt = sun, screenshot = rain, document = moss, other = ink-muted on `leaf-raised`.
-- **Contrast:** every text pair above was checked approximately against WCAG AA (4.5:1) in both themes. Recheck with a contrast checker during build.
+- **Contrast:** text pairs must meet WCAG AA (4.5:1) in both themes. The Track U check corrected light `ember` from `#B3423A` (4.48:1 on `ember-tint`) to `#B1423A` (4.53:1). The other text/tint and primary-button pairs pass in both themes.
 
 **Typography**
 - **Families:** Atkinson Hyperlegible Next for all UI text; Atkinson Hyperlegible Mono only for file names and paths.
@@ -1176,7 +1176,7 @@ Seeded on first run. Users can edit, rename or add more on the Categories page (
   --color-sun-tint: #FBEFD9;
   --color-rain: #2F6690;
   --color-rain-tint: #DCE9F3;
-  --color-ember: #B3423A;
+  --color-ember: #B1423A;
   --color-ember-tint: #F8E1DE;
 
   --radius-chip: 4px;
@@ -1294,6 +1294,12 @@ Three steps, in order. Moving back is allowed until "Finish setup".
   - "Finish anyway" is a quiet link that finishes with the queue paused.
   - The checks re-run every 10 s.
 
+**Track U contract boundary:** there is no separate output-folder validation
+operation in the fixed contract. Setup checks the absolute path and selected
+folder overlaps locally; complete output-folder validation remains with
+`POST /api/setup/complete`. Completed setup redirects to Today. A dedicated
+output-folder check is deferred until the contract supports it.
+
 #### 7.4.2 Today (`/`)
 
 ```
@@ -1358,6 +1364,12 @@ Three steps, in order. Moving back is allowed until "Finish setup".
 1. A popover offers: Last 15 minutes / Last hour / Today / Pick a time.
 2. A confirm dialog follows: "Undo 12 actions since 10:30?" with [Undo 12 actions] [Cancel].
 3. Toast: "Undone 12 actions".
+
+**Track U integration note:** the fixed contract returns the action count only
+after undo executes. Until a preview/count operation is available, the
+confirmation says "Undo actions since {time}?" with [Undo actions] [Cancel],
+then reports the actual returned count. It never counts visible activity rows
+as actions. Any failed results are shown separately with their reasons.
 
 **Empty state:** "Nothing filed yet. Save a file to a watched folder, take a screenshot, or send one from your phone." with [Show phone QR code].
 
@@ -1480,6 +1492,12 @@ One file at a time.
 
 **Missing folder:** the row shows "Folder not found" with [Locate] and [Remove].
 
+**Track U contract boundary:** the output folder's Open action and a missing
+folder's Locate action are deferred. The fixed contract has file-ID open/reveal
+operations and folder updates for label, mode and enabled state, but no operation
+to open the output root or replace a watched folder's path. Remove remains
+available and confirms that already-filed files stay in place.
+
 **Phone page block**
 - **QR code** for the phone URL.
 - **New link** confirms "The old link will stop working." Toast: "New link ready".
@@ -1511,6 +1529,11 @@ One file at a time.
 - **Other tab:** read-only. Those folders are sorted by extension.
 - **Name uniqueness:** names must be unique within a type.
 
+**Track U integration:** built-in categories are read-only, matching the
+wireframe. A live file update refreshes the count and locks the folder field
+without discarding an open edit. The server remains authoritative if files
+arrive between the check and save or removal.
+
 #### 7.4.8 Settings (`/settings`)
 
 | Group | Contents |
@@ -1522,6 +1545,17 @@ One file at a time.
 | Ignored files | Undone files SlothBox will not refile: name, when undone, [Allow again] |
 | Logs | [Open logs folder] |
 | About | Version, repo link |
+
+**Track U integration:** theme changes apply immediately and stay in the
+browser. Startup, Ollama address and laziness estimates use an explicit Save
+settings button. Unsaved fields survive background refreshes; untouched fields
+use the latest loaded settings when the full PUT is sent. Durations accept
+nonnegative whole seconds within the contract's int32 range. Check again uses
+the saved Ollama address; rebuild reports queued work, not completion.
+
+Open logs folder and the app version remain deferred: the fixed contract has
+no operation for opening logs and no app-version metadata. The About repository
+link uses the project named in this spec. No placeholder version is displayed.
 
 #### 7.4.9 File drawer (`?file=<id>`)
 
@@ -1573,6 +1607,10 @@ Opens from the right, 440 px wide, over any page.
 - **Success toasts** hide after 6 s; hover or focus pauses the timer.
 - **Error toasts** stay until dismissed.
 - **Any toast after a move** includes [Undo].
+
+**Track U integration note:** the fixed Track 0 `StatusDto` has no drive-full
+signal. That banner awaits an explicit contract field; the UI does not infer it
+from a free-text service message.
 
 ### 7.5 Components
 
@@ -1675,6 +1713,15 @@ Tray notifications appear only when a file goes to Needs review. Clicking one op
 - **Take a photo:** `accept="image/*" capture="environment"`.
 - **Choose files:** `accept="image/*,application/pdf" multiple`.
 - Uploads go one at a time with per-file progress.
+- The build emits one self-contained `wwwroot/phone/index.html`. CSS, colour
+  tokens and script are inline; there are no font, stylesheet or script requests
+  on the isolated phone port.
+- Each upload posts multipart field `file` to `location.pathname + '/upload'`.
+- A 401 stops the remaining queue and disables file selection. Other failures
+  leave that file marked as failed and allow the queue to continue. Failures
+  are announced through an alert; progress ticks stay quiet. The received count
+  includes only acknowledged uploads. If any files failed, the summary asks
+  the user to choose them again rather than saying the page can be closed.
 
 **Messages**
 - **After upload:** "Received 3 files. You can close this page."
@@ -1734,9 +1781,33 @@ src/SlothBox.Web/
 **Development**
 - Run `SlothBox.App`, which serves the API on 5080.
 - Run `npm run dev`, which serves Vite on 5173 and proxies `/api` and `/events` to 5080 with `changeOrigin: true`, so the Host check passes.
+- `npm run dev:mock` starts the same dashboard with MSW's browser worker and
+  synthetic fixtures. Pause/Resume state persists within the page session and
+  the mock SSE connection stays open. API types are generated before either
+  development command. The worker is served only by development middleware;
+  production bundles contain no mock handlers, fixtures or worker.
+- The development fixtures include paginated activity and a review queue.
+  Skip, refile and Undo retain their synthetic state for the page session and
+  publish SSE updates. Open and Show in folder acknowledge the request without
+  accessing local files.
+- Search and the monthly receipt ledger use those same synthetic files. Folder
+  changes, phone-link rotation and setup completion persist within the page
+  session. Tidy progress is simulated through SSE. Open `/setup?mockSetup` in
+  `dev:mock` to start the incomplete-setup fixture; it uses path fields and never
+  opens native dialogs or accesses real folders. Its QR images are placeholders.
+- Category CRUD, settings and Allow again persist for the development page
+  session. Category names and counts share the file fixtures; saved estimates
+  update the meter, and undo adds a synthetic ignored entry. Reload resets these
+  fixtures; the theme preference persists in browser storage.
+- Known development limitation with pinned MSW 3.0.3: repeated full-page reloads
+  can report a ServiceWorker update "Not found" rejection while the previous
+  page unregisters its worker. The tested page flows still work; this warning
+  is confined to `dev:mock`, and the production build contains no worker.
 
 **Build**
 - `npm run build` writes to `src/SlothBox.Server/wwwroot`, which is git-ignored.
+- That same build emits both `index.html` and `phone/index.html`, so clearing
+  the output directory never removes a separately built phone page.
 - `SlothBox.Server` embeds `wwwroot/**` as resources and serves it through `ManifestEmbeddedFileProvider`. The published single `.exe` bundles Server, so it contains the UI (A19).
 - Unknown non-API routes fall back to `index.html`.
 

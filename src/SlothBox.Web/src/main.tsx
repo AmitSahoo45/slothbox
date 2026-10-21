@@ -8,8 +8,14 @@ import './styles/tokens.css'
 import './styles/base.css'
 import { App } from './App'
 
-createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <App />
-  </StrictMode>,
-)
+async function start() {
+  if (import.meta.env.DEV && import.meta.env.MODE === 'mock') {
+    const { startMocks } = await import('./mocks/browser')
+    await startMocks()
+  }
+  createRoot(document.getElementById('root')!).render(<StrictMode><App /></StrictMode>)
+}
+void start().catch(() => {
+  const root = document.getElementById('root')
+  if (root) root.textContent = 'SlothBox could not start. Reload the page to try again.'
+})

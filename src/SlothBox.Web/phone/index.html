@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>Send files | SlothBox</title>
+  <link rel="icon" href="data:,">
+  <style>
+    :root {
+      --mist: #EEF2EF; --leaf: #FFFFFF; --leaf-raised: #F6F9F7;
+      --line: #D5DED8; --ink: #17261D; --ink-muted: #55625A;
+      --moss: #2E6B47; --moss-tint: #DDEBE2; --sun: #8A5A12;
+      --sun-tint: #FBEFD9; --rain: #2F6690; --rain-tint: #DCE9F3;
+      --ember: #B1423A; --ember-tint: #F8E1DE; --on-primary: #FFFFFF;
+      --radius-control: 6px; --radius-panel: 10px;
+      font-family: system-ui, sans-serif; color-scheme: light;
+      color: var(--ink); background: var(--mist);
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --mist: #0F1A14; --leaf: #16241B; --leaf-raised: #1D2E23;
+        --line: #2A3D31; --ink: #E3ECE5; --ink-muted: #9DB0A3;
+        --moss: #6FBF8B; --moss-tint: #1F3A2A; --sun: #E3A944;
+        --sun-tint: #3A2D14; --rain: #7FB2DA; --rain-tint: #1A2D3D;
+        --ember: #E57A70; --ember-tint: #3B1E1B; --on-primary: #0F1A14;
+        color-scheme: dark;
+      }
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; font-size: 16px; line-height: 1.5; }
+    main { max-width: 520px; margin: 0 auto; padding: 32px 20px; }
+    header { color: var(--moss); font-weight: 700; margin-bottom: 40px; }
+    h1 { font-size: 24px; line-height: 32px; margin: 0 0 24px; }
+    button { font: inherit; font-weight: 700; min-height: 56px; width: 100%; padding: 12px 16px;
+      border: 1px solid var(--line); border-radius: var(--radius-control);
+      background: var(--leaf); color: var(--ink); cursor: pointer; margin-bottom: 12px; }
+    .primary { background: var(--moss); color: var(--on-primary); border-color: var(--moss); }
+    button:disabled { opacity: .6; cursor: default; }
+    :focus-visible { outline: 2px solid var(--moss); outline-offset: 2px; }
+    .hint { color: var(--ink-muted); font-size: 14px; }
+    ul { list-style: none; padding: 0; margin: 24px 0; }
+    li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 8px 12px;
+      border-bottom: 1px solid var(--line); padding: 16px 0; }
+    .name { overflow-wrap: anywhere; font-family: ui-monospace, monospace; font-size: 15px; }
+    .state { color: var(--ink-muted); font-size: 14px; }
+    .sent .state { color: var(--moss); }
+    .failed .state { color: var(--ember); grid-column: 1 / -1; }
+    progress { width: 100%; height: 8px; accent-color: var(--moss); grid-column: 1 / -1; }
+    #notice:not(:empty), #summary:not(:empty) { padding: 16px; border-radius: var(--radius-panel); }
+    #notice:not(:empty) { background: var(--ember-tint); color: var(--ember); }
+    #summary:not(:empty) { background: var(--moss-tint); }
+  </style>
+</head>
+<body>
+  <main>
+    <header>SlothBox</header>
+    <h1>Send files to your laptop</h1>
+    <button class="primary" type="button" id="take-photo">Take a photo</button>
+    <input id="camera" aria-label="Take a photo" type="file" accept="image/*" capture="environment" hidden>
+    <button type="button" id="choose-files">Choose files</button>
+    <input id="files" aria-label="Choose files" type="file" accept="image/*,application/pdf" multiple hidden>
+    <p class="hint">Images or PDF, up to 50 MB.</p>
+    <p id="notice" role="alert"></p>
+    <ul id="uploads" aria-label="Files"></ul>
+    <p id="summary" role="status" aria-live="polite"></p>
+  </main>
+  <script>
+    (() => {
+      const camera = document.getElementById('camera');
+      const files = document.getElementById('files');
+      const takePhoto = document.getElementById('take-photo');
+      const chooseFiles = document.getElementById('choose-files');
+      const summary = document.getElementById('summary');
+      const notice = document.getElementById('notice');
+      const queue = [];
+      let sending = false;
+      let expired = false;
+      let received = 0;
+      let failed = 0;
+      const oldLink = 'This link no longer works. Scan the new QR code on your laptop.';
+      const failure = 'Could not send this file. Check your Wi-Fi and choose it again.';
+      takePhoto.addEventListener('click', () => camera.click());
+      chooseFiles.addEventListener('click', () => files.click());
+
+      function enqueue(event) {
+        if (expired) return;
+        for (const file of event.target.files) {
+          const row = document.createElement('li');
+          const name = document.createElement('span');
+          name.className = 'name';
+          name.textContent = file.name;
+          const state = document.createElement('span');
+          state.className = 'state';
+          state.textContent = 'Waiting';
+          const progress = document.createElement('progress');
+          progress.max = 100;
+          progress.value = 0;
+          progress.hidden = true;
+          progress.setAttribute('aria-label', 'Sending ' + file.name);
+          row.append(name, state, progress);
+          document.getElementById('uploads').append(row);
+          queue.push({ file, row, state, progress });
+        }
+        event.target.value = '';
+        summary.textContent = '';
+        sendNext();
+      }
+      camera.addEventListener('change', enqueue);
+      files.addEventListener('change', enqueue);
+
+      function sendNext() {
+        if (sending || expired) return;
+        const item = queue.shift();
+        if (!item) {
+          if (received) {
+            summary.textContent = 'Received ' + received + (received === 1 ? ' file.' : ' files.')
+              + (failed ? ' Some files were not sent. Choose them again to retry.' : ' You can close this page.');
+          }
+          return;
+        }
+        sending = true;
+        item.state.textContent = 'Sending…';
+        item.progress.hidden = false;
+        const request = new XMLHttpRequest();
+        request.open('POST', location.pathname + '/upload');
+        request.timeout = 120000;
+        request.upload.addEventListener('progress', event => {
+          if (event.lengthComputable) item.progress.value = Math.round(event.loaded / event.total * 100);
+        });
+        let finished = false;
+        function finish(message) {
+          if (finished) return;
+          finished = true;
+          item.progress.hidden = true;
+          item.row.className = message ? 'failed' : 'sent';
+          item.state.textContent = message || 'Sent';
+          if (message && !expired) notice.textContent = item.file.name + ': ' + message;
+          if (message) failed++; else received++;
+          sending = false;
+          sendNext();
+        }
+        request.onload = () => {
+          if (request.status === 401) {
+            expired = true;
+            notice.textContent = oldLink;
+            for (const input of [camera, files, takePhoto, chooseFiles]) input.disabled = true;
+            for (const waiting of queue.splice(0)) {
+              waiting.row.className = 'failed';
+              waiting.state.textContent = 'Not sent. Scan the new QR code.';
+            }
+            finish(oldLink);
+          } else if (request.status === 413) {
+            finish('This file is over 50 MB.');
+          } else if (request.status === 415) {
+            finish('Only images and PDFs can be sent.');
+          } else {
+            let acknowledged = false;
+            try { acknowledged = JSON.parse(request.responseText).received === true; } catch { /* No acknowledgement. */ }
+            finish(request.status >= 200 && request.status < 300 && acknowledged ? null : failure);
+          }
+        };
+        request.onerror = request.ontimeout = request.onabort = () => finish(failure);
+        const body = new FormData();
+        body.append('file', item.file);
+        request.send(body);
+      }
+    })();
+  </script>
+</body>
+</html>
