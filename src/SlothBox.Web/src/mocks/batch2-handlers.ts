@@ -2,15 +2,20 @@ import { http, HttpResponse } from 'msw'
 import type { MockEvent, Schema } from '../api/types'
 import { responses, laziness } from './fixtures'
 import { localDate } from '../components/format'
+import { createCategoryHandlers, type SettingsState } from './batch4-handlers'
 
 // Session-only synthetic files. No filesystem operations run in these handlers.
-export function createBatch2Handlers(publish: (event: MockEvent) => void) {
+export function createBatch2Handlers(publish: (event: MockEvent) => void, settingsState?: SettingsState) {
   const categories: Schema['CategoryDto'][] = [
     ['receipt', 'Food and drink'], ['receipt', 'Shopping'], ['receipt', 'Bills and recharges'],
     ['screenshot', 'Conversations'], ['screenshot', 'Reference'], ['document', 'Learning'],
-    ['document', 'Work'], ['other', 'Other'],
+    ['document', 'Work'], ['other', 'Misc'],
+    ['receipt', 'Other'], ['screenshot', 'Other'], ['document', 'Other'],
+    ['other', 'Installers'], ['other', 'Archives'], ['other', 'Media'],
   ].map(([type, name], index) => ({
     ...responses.GetCategories[0], id: index + 1, type: type as Schema['FileKind'], name, folder: name,
+    isSystem: type === 'other' || name === 'Other',
+    description: name === 'Other' ? 'Anything that fits no other category' : type === 'other' ? 'Sorted by file extension' : `${name} files and related purchases`,
   }))
   const files = new Map<string, Schema['FileDetailsDto']>()
   const before = new Map<string, Schema['FileDetailsDto'][]>()
@@ -71,7 +76,10 @@ export function createBatch2Handlers(publish: (event: MockEvent) => void) {
     if (previous) {
       files.set(id, previous)
       if (previous.reviewReason && !reviewOrder.includes(id)) reviewOrder.push(id)
-    } else details.file = { ...details.file, status: 'undone', canUndo: false }
+    } else {
+      details.file = { ...details.file, status: 'undone', canUndo: false }
+      settingsState?.ignored.push({ sha256: id.replaceAll('-', '').padEnd(64, '0'), fileName: details.originalName, at: new Date().toISOString(), reason: 'undone' })
+    }
     publish({ event: 'file.undone', data: { fileId: id } })
     return { fileId: id, success: true, restoredPath: details.originalPath, reason: null }
   }
@@ -95,7 +103,11 @@ export function createBatch2Handlers(publish: (event: MockEvent) => void) {
       const rows = ledger(month).items.map(item => [item.date, item.vendor, item.amount, item.currency, item.category, item.paymentMethod].map(quote).join(','))
       return HttpResponse.text(['date,vendor,amount,currency,category,paid_by', ...rows].join('\r\n'), { headers: { 'Content-Type': 'text/csv', 'Content-Disposition': 'attachment; filename="receipts.csv"' } })
     }),
-    http.get('*/api/categories', () => HttpResponse.json(categories)),
+    ...createCategoryHandlers(categories, id => [...files.values()].filter(file => file.categoryId === id && file.file.status !== 'undone').length, category => {
+      for (const file of [...files.values(), ...[...before.values()].flat()]) {
+        if (file.categoryId === category.id) file.file = { ...file.file, category: category.name }
+      }
+    }),
     http.get('*/api/activity', ({ request }) => {
       const url = new URL(request.url)
       const offset = Math.max(0, Number(url.searchParams.get('cursor')) || 0)
@@ -106,6 +118,7 @@ export function createBatch2Handlers(publish: (event: MockEvent) => void) {
     }),
     http.get('*/api/stats/laziness', ({ request }) => {
       const range = new URL(request.url).searchParams.get('range')
+      const secondsPerType = settingsState?.settings.laziness ?? laziness
       const today = new Date()
       const monday = new Date(today.getFullYear(), today.getMonth(), today.getDate() - (today.getDay() + 6) % 7)
       const since = range === 'today' ? localDate(today) : range === 'all' ? '' : localDate(monday)
@@ -125,8 +138,8 @@ export function createBatch2Handlers(publish: (event: MockEvent) => void) {
       }
       return HttpResponse.json({
         filesFiled: selected.length,
-        minutesSaved: selected.reduce((sum, file) => sum + (file.type === 'receipt' ? 30 : file.type === 'other' ? 5 : 15), 0) / 60,
-        receiptsLogged: receipts.length, receiptTotals: [...totals.values()], duplicatesCaught: 0, secondsPerType: laziness,
+        minutesSaved: selected.reduce((sum, file) => sum + Number(secondsPerType[file.type === 'receipt' ? 'receiptSeconds' : file.type === 'screenshot' ? 'screenshotSeconds' : file.type === 'document' ? 'documentSeconds' : 'otherSeconds']), 0) / 60,
+        receiptsLogged: receipts.length, receiptTotals: [...totals.values()], duplicatesCaught: 0, secondsPerType,
         days: Array.from({ length: 7 }, (_, index) => {
           const date = localDate(new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + index))
           return { date, count: filed.filter(file => localDate(new Date(file.at)) === date).length }

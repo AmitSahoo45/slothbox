@@ -12,7 +12,7 @@ export function useFileActions() {
   const client = useQueryClient()
   const { notify } = useToasts()
   const refresh = () => {
-    for (const key of ['activity', 'review', 'stats', 'files', 'receipts', 'search', 'categories']) {
+    for (const key of ['activity', 'review', 'stats', 'files', 'receipts', 'search', 'categories', 'ignored']) {
       void client.invalidateQueries({ queryKey: [key] })
     }
   }

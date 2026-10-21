@@ -1,0 +1,142 @@
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { afterEach, beforeEach, expect, test, vi } from 'vitest'
+import { http, HttpResponse } from 'msw'
+import { App } from '../src/App'
+import { responses, status } from '../src/mocks/fixtures'
+import { server } from '../src/mocks/server'
+import { createBrowserHandlers } from '../src/mocks/browser-handlers'
+import type { Schema } from '../src/api/types'
+import { setupUi, TestEvents } from './ui-helpers'
+
+setupUi('/settings')
+beforeEach(() => { localStorage.clear(); document.documentElement.classList.remove('dark') })
+afterEach(() => { localStorage.clear(); document.documentElement.classList.remove('dark') })
+
+test('System follows live system changes; explicit Light and Dark persist across navigation and reload', async () => {
+  const media = new EventTarget()
+  let dark = true
+  vi.stubGlobal('matchMedia', (query: string) => query === '(prefers-color-scheme: dark)' ? Object.assign(media, { matches: dark })
+    : { matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() })
+  const changeSystem = (value: boolean) => act(() => {
+    dark = value
+    Object.assign(media, { matches: dark })
+    media.dispatchEvent(new Event('change'))
+  })
+  const view = render(<App />)
+  expect(await screen.findByRole('radio', { name: 'System' })).toBeChecked()
+  expect(document.documentElement).toHaveClass('dark')
+  changeSystem(false)
+  expect(document.documentElement).not.toHaveClass('dark')
+  fireEvent.click(screen.getByRole('radio', { name: 'Dark' }))
+  expect(document.documentElement).toHaveClass('dark')
+  changeSystem(false)
+  expect(document.documentElement).toHaveClass('dark')
+  fireEvent.click(screen.getByRole('radio', { name: 'Light' }))
+  changeSystem(true)
+  expect(document.documentElement).not.toHaveClass('dark')
+  fireEvent.click(screen.getByRole('link', { name: 'Categories' }))
+  expect(document.documentElement).not.toHaveClass('dark')
+  view.unmount()
+  window.history.replaceState({}, '', '/settings')
+  render(<App />)
+  expect(await screen.findByRole('radio', { name: 'Light' })).toBeChecked()
+  expect(document.documentElement).not.toHaveClass('dark')
+  fireEvent.click(screen.getByRole('radio', { name: 'System' }))
+  expect(document.documentElement).toHaveClass('dark')
+})
+
+test('theme remains usable when localStorage is blocked', async () => {
+  const get = vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => { throw new Error('Blocked') })
+  const set = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => { throw new Error('Blocked') })
+  try {
+    render(<App />)
+    fireEvent.click(await screen.findByRole('radio', { name: 'Dark' }))
+    expect(document.documentElement).toHaveClass('dark')
+  } finally { get.mockRestore(); set.mockRestore() }
+})
+
+test('saves all server settings and retains them across navigation', async () => {
+  server.use(...createBrowserHandlers())
+  render(<App />)
+  fireEvent.click(await screen.findByRole('switch', { name: 'Start SlothBox when I sign in' }))
+  fireEvent.change(screen.getByLabelText('Seconds per receipt'), { target: { value: '45' } })
+  fireEvent.change(screen.getByLabelText('Ollama address'), { target: { value: 'http://127.0.0.1:11437' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Save settings' }))
+  expect(await screen.findByText('Settings saved')).toBeVisible()
+  fireEvent.click(screen.getByRole('link', { name: 'Categories' }))
+  fireEvent.click(screen.getByRole('link', { name: 'Settings' }))
+  expect(await screen.findByRole('switch', { name: 'Start SlothBox when I sign in' })).toBeChecked()
+  expect(screen.getByLabelText('Seconds per receipt')).toHaveValue(45)
+  expect(screen.getByLabelText('Seconds per screenshot')).toHaveValue(15)
+  expect(screen.getByLabelText('Ollama address')).toHaveValue('http://127.0.0.1:11437')
+})
+
+test('a settings refetch preserves edits and includes newer untouched settings in the full PUT', async () => {
+  let current: Schema['SettingsDto'] = structuredClone(responses.GetSettings)
+  let body: unknown
+  server.use(
+    http.get('*/api/settings', () => HttpResponse.json(current)),
+    http.put('*/api/settings', async ({ request }) => { const data = await request.json() as Schema['SettingsDto']; body = data; return HttpResponse.json(data) }),
+  )
+  render(<App />)
+  fireEvent.change(await screen.findByLabelText('Seconds per receipt'), { target: { value: '60' } })
+  current = { ...current, startAtLogin: true, ollamaUrl: 'http://127.0.0.1:11437' }
+  act(() => TestEvents.latest.dispatchEvent(new Event('open')))
+  await waitFor(() => expect(screen.getByRole('switch', { name: 'Start SlothBox when I sign in' })).toBeChecked())
+  expect(screen.getByLabelText('Seconds per receipt')).toHaveValue(60)
+  fireEvent.click(screen.getByRole('button', { name: 'Save settings' }))
+  await waitFor(() => expect(body).toEqual({ startAtLogin: true, ollamaUrl: 'http://127.0.0.1:11437',
+    laziness: { receiptSeconds: 60, screenshotSeconds: 15, documentSeconds: 15, otherSeconds: 5 } }))
+})
+
+test('failed settings saves retain the draft and reject invalid durations', async () => {
+  server.use(http.put('*/api/settings', () => HttpResponse.json({ title: 'Could not save settings. Try again.' }, { status: 503 })))
+  render(<App />)
+  const receipt = await screen.findByLabelText('Seconds per receipt')
+  fireEvent.change(receipt, { target: { value: '-1' } })
+  expect(screen.getByRole('button', { name: 'Save settings' })).toBeDisabled()
+  fireEvent.change(receipt, { target: { value: '45' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Save settings' }))
+  expect(await screen.findByText('Could not save settings. Try again.')).toBeVisible()
+  expect(receipt).toHaveValue(45)
+})
+
+test('checks model status and reports search rebuild as queued work', async () => {
+  let ready = false
+  server.use(
+    http.get('*/api/status', () => HttpResponse.json({ ...status, embeddingModel: { ...status.embeddingModel, loaded: ready } })),
+    http.post('*/api/search-data/rebuild', () => HttpResponse.json({ queued: 7 })),
+  )
+  render(<App />)
+  const ai = await screen.findByRole('region', { name: 'AI' })
+  expect(within(ai).getByText(/embeddinggemma/)).toBeVisible()
+  expect(within(ai).getByText('Installed, not loaded')).toBeVisible()
+  ready = true
+  fireEvent.click(within(ai).getByRole('button', { name: 'Check again' }))
+  expect(await within(ai).findByText('Loaded on CPU')).toBeVisible()
+  fireEvent.click(within(ai).getByRole('button', { name: 'Rebuild missing search data' }))
+  expect(await screen.findByText('Queued 7 files for search data rebuild')).toBeVisible()
+})
+
+test('Allow again preserves a refused row, then removes it on success; undo events refresh the list', async () => {
+  let allowed = false
+  let success = false
+  server.use(
+    http.get('*/api/ignored', () => HttpResponse.json(allowed ? [] : responses.GetIgnored)),
+    http.delete('*/api/ignored/:sha256', ({ params }) => {
+      expect(params.sha256).toBe('a'.repeat(64))
+      allowed = success
+      return HttpResponse.json({ success, message: success ? null : 'Cannot allow this file yet.' })
+    }),
+  )
+  render(<App />)
+  fireEvent.click(await screen.findByRole('button', { name: 'Allow again sample.jpg' }))
+  expect(await screen.findByText('Cannot allow this file yet.')).toBeVisible()
+  expect(screen.getByText('sample.jpg')).toBeVisible()
+  success = true
+  fireEvent.click(screen.getByRole('button', { name: 'Allow again sample.jpg' }))
+  await waitFor(() => expect(screen.queryByText('sample.jpg')).not.toBeInTheDocument())
+  allowed = false
+  act(() => TestEvents.latest.emit('file.undone', { fileId: 'synthetic-file' }))
+  expect(await screen.findByText('sample.jpg')).toBeVisible()
+})

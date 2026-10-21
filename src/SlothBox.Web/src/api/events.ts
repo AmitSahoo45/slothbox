@@ -57,7 +57,7 @@ export function useServerEvents() {
         } else {
           void client.invalidateQueries({ queryKey: ['activity'], refetchType: 'none' })
         }
-        for (const key of ['review', 'stats', 'files', 'receipts', 'search', 'categories']) {
+        for (const key of ['review', 'stats', 'files', 'receipts', 'search', 'categories', 'ignored']) {
           void client.cancelQueries({ queryKey: [key] })
             .then(() => client.invalidateQueries({ queryKey: [key] }))
         }

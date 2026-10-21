@@ -1,12 +1,14 @@
 import { http, HttpResponse } from 'msw'
 import { handlers } from './handlers'
-import { status } from './fixtures'
+import { responses, status } from './fixtures'
 import type { MockEvent, Schema } from '../api/types'
 import { createBatch2Handlers } from './batch2-handlers'
 import { createBatch3Handlers } from './batch3-handlers'
+import { createSettingsHandlers, type SettingsState } from './batch4-handlers'
 
 export function createBrowserHandlers(options: { setupComplete?: boolean } = {}) {
   let current: Schema['StatusDto'] = { ...structuredClone(status), setupComplete: options.setupComplete ?? true }
+  const settingsState: SettingsState = { settings: structuredClone(responses.GetSettings), ignored: structuredClone(responses.GetIgnored) }
   const subscribers = new Set<ReadableStreamDefaultController<Uint8Array>>()
   const encoder = new TextEncoder()
   const statusEvent = () => encoder.encode(`event: status.changed\ndata: ${JSON.stringify(current)}\n\n`)
@@ -53,8 +55,9 @@ export function createBrowserHandlers(options: { setupComplete?: boolean } = {})
         'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache',
       } })
     }),
-    ...createBatch2Handlers(publish),
+    ...createBatch2Handlers(publish, settingsState),
     ...createBatch3Handlers(() => current, status => { current = status; publish({ event: 'status.changed', data: current }) }, publish),
+    ...createSettingsHandlers(settingsState),
     ...handlers,
   ]
 }

@@ -1486,6 +1486,11 @@ available and confirms that already-filed files stay in place.
 - **Other tab:** read-only. Those folders are sorted by extension.
 - **Name uniqueness:** names must be unique within a type.
 
+**Track U integration:** built-in categories are read-only, matching the
+wireframe. A live file update refreshes the count and locks the folder field
+without discarding an open edit. The server remains authoritative if files
+arrive between the check and save or removal.
+
 #### 7.4.8 Settings (`/settings`)
 
 | Group | Contents |
@@ -1497,6 +1502,17 @@ available and confirms that already-filed files stay in place.
 | Ignored files | Undone files SlothBox will not refile: name, when undone, [Allow again] |
 | Logs | [Open logs folder] |
 | About | Version, repo link |
+
+**Track U integration:** theme changes apply immediately and stay in the
+browser. Startup, Ollama address and laziness estimates use an explicit Save
+settings button. Unsaved fields survive background refreshes; untouched fields
+use the latest loaded settings when the full PUT is sent. Durations accept
+nonnegative whole seconds within the contract's int32 range. Check again uses
+the saved Ollama address; rebuild reports queued work, not completion.
+
+Open logs folder and the app version remain deferred: the fixed contract has
+no operation for opening logs and no app-version metadata. The About repository
+link uses the project named in this spec. No placeholder version is displayed.
 
 #### 7.4.9 File drawer (`?file=<id>`)
 
@@ -1732,6 +1748,10 @@ src/SlothBox.Web/
   session. Tidy progress is simulated through SSE. Open `/setup?mockSetup` in
   `dev:mock` to start the incomplete-setup fixture; it uses path fields and never
   opens native dialogs or accesses real folders. Its QR images are placeholders.
+- Category CRUD, settings and Allow again persist for the development page
+  session. Category names and counts share the file fixtures; saved estimates
+  update the meter, and undo adds a synthetic ignored entry. Reload resets these
+  fixtures; the theme preference persists in browser storage.
 - Known development limitation with pinned MSW 3.0.3: repeated full-page reloads
   can report a ServiceWorker update "Not found" rejection while the previous
   page unregisters its worker. The tested page flows still work; this warning

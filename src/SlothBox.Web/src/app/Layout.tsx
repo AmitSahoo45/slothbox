@@ -15,6 +15,8 @@ import { Search } from '../pages/Search/Search'
 import { Receipts } from '../pages/Receipts/Receipts'
 import { Setup } from '../pages/Setup/Setup'
 import { Folders } from '../pages/Folders/Folders'
+import { Categories } from '../pages/Categories/Categories'
+import { Settings } from '../pages/Settings/Settings'
 
 export function Layout() {
   const status = useQuery(statusQuery)
@@ -49,6 +51,8 @@ export function Layout() {
       {pathname === '/search' && status.data?.setupComplete && <Search />}
       {pathname === '/receipts' && status.data?.setupComplete && <Receipts />}
       {pathname === '/folders' && status.data?.setupComplete && <Folders />}
+      {pathname === '/categories' && status.data?.setupComplete && <Categories />}
+      {pathname === '/settings' && status.data?.setupComplete && <Settings />}
       {isSetup && <Setup />}
     </main>
     <FileDrawer />
