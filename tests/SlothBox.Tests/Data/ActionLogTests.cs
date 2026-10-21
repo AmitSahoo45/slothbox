@@ -9,6 +9,21 @@ public sealed class ActionLogTests(PostgresFixture postgres)
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
     [Fact]
+    public async Task A_change_from_a_path_that_is_not_the_files_current_path_is_refused()
+    {
+        await using var h = await MoveHarness.CreateAsync(postgres);
+        var source = h.Watched("IMG_2041.jpg", "receipt photo");
+        var file = await h.AddFileAsync(source);
+        var elsewhere = h.Output("Receipts", "Food", "IMG_2041.jpg");
+
+        var id = await h.Log.AppendPendingAsync(
+            new MoveRequest(file.Id, ActionKind.UndoMove, elsewhere, source, file.Sha256), Ct);
+
+        id.ShouldBeNull();
+        (await h.ActionsAsync(file.Id)).ShouldBeEmpty();
+    }
+
+    [Fact]
     public async Task A_late_second_completion_does_not_overwrite_the_first()
     {
         await using var h = await MoveHarness.CreateAsync(postgres);

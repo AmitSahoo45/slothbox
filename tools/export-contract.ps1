@@ -8,7 +8,15 @@ $listeners = [System.Net.NetworkInformation.IPGlobalProperties]::GetIPGlobalProp
 if ($listeners | Where-Object { $_.Port -in @(5080, 5081) }) {
     throw 'Ports 5080 and 5081 must be free so the exporter can start its own server.'
 }
-$server = Start-Process -FilePath 'dotnet' -ArgumentList @('"' + $serverPath + '"') -WorkingDirectory $repoRoot -WindowStyle Hidden -PassThru
+# The exporter only reads the OpenAPI document: under the Testing environment the server starts no worker, so it
+# never touches the database, the settings file or Ollama.
+$previousEnvironment = $env:ASPNETCORE_ENVIRONMENT
+$env:ASPNETCORE_ENVIRONMENT = 'Testing'
+try {
+    $server = Start-Process -FilePath 'dotnet' -ArgumentList @('"' + $serverPath + '"') -WorkingDirectory $repoRoot -WindowStyle Hidden -PassThru
+} finally {
+    $env:ASPNETCORE_ENVIRONMENT = $previousEnvironment
+}
 try {
     $document = $null
     for ($attempt = 0; $attempt -lt 40; $attempt++) {

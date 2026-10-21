@@ -22,6 +22,7 @@ public sealed record AnalysisRequest(string OriginalName, string FolderLabel, Fi
 public sealed record SourceFileInfo(string Path, string OriginalName, string Extension, DateTimeOffset CreatedAt,
     long SizeBytes, string OutputRoot);
 public sealed record Job(long Id, IncomingFile File, JobStatus Status, int Attempts, string? LastError, Guid? FileId);
+public sealed record QueueCounts(int Waiting, int Processing);
 public sealed record JobOutcome(JobStatus Status, Guid? FileId = null, string? Error = null);
 public sealed record FileRecord(Guid Id, string Sha256, FileOrigin Origin, int? WatchedFolderId, string OriginalName,
     string OriginalPath, string CurrentPath, FileKind Type, int? CategoryId, string Title, string Caption,
@@ -69,6 +70,9 @@ public abstract record AnalysisResult
 // After, when set, is the state the file takes with it.
 public sealed record MoveRequest(Guid FileId, ActionKind Kind, string From, string To, string Sha256,
     FileSnapshot? Before = null, FileSnapshot? After = null);
-public sealed record MoveResult(bool Succeeded, long? ActionId, string? Destination, string? Error);
+// Why a change did not happen. The worker pauses itself on DriveFull (spec 9).
+public enum MoveFailure { ChangedMeanwhile, Invalid, DestinationTaken, HashMismatch, OriginalKept, DriveFull, IoError }
+public sealed record MoveResult(bool Succeeded, long? ActionId, string? Destination, string? Error,
+    MoveFailure? Failure = null);
 public sealed record RecoveredAction(long ActionId, Guid FileId, ActionStatus Status, string? Error, bool Requeued);
 public sealed record UndoResult(Guid FileId, bool Succeeded, string? RestoredPath, string? Error);

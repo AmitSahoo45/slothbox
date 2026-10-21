@@ -38,8 +38,8 @@ internal sealed class MoveHarness : IAsyncDisposable
     public ReceiptRepository Receipts { get; }
     public IgnoredHashes Ignored { get; }
 
-    public SafeMover Mover(bool? sameVolume = null) =>
-        new(Log, Files, Jobs, sameVolume is { } same ? (_, _) => same : null);
+    public SafeMover Mover(bool? sameVolume = null, Func<string, string, CancellationToken, Task>? copy = null) =>
+        new(Log, Files, Jobs, sameVolume is { } same ? (_, _) => same : null, copy);
 
     public UndoService Undo() => new(Log, Files, Receipts, Mover());
 

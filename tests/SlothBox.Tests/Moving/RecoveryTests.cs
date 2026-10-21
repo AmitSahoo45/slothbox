@@ -11,7 +11,10 @@ public sealed class RecoveryTests(PostgresFixture postgres)
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
-    private sealed record Crash(FileRecord File, string Source, string Target, int FolderId);
+    private sealed record Crash(FileRecord File, string Source, string Target, int FolderId, long ActionId)
+    {
+        public string Temp => TempFiles.For(Target, ActionId);
+    }
 
     private static async Task<Crash> CrashedAsync(MoveHarness h, ActionKind kind = ActionKind.Move,
         FileSnapshot? before = null, FileSnapshot? after = null)
@@ -20,8 +23,9 @@ public sealed class RecoveryTests(PostgresFixture postgres)
         var source = h.Watched("IMG_2041.jpg", Content);
         var file = await h.AddFileAsync(source, folderId: folderId);
         var target = h.Output("Receipts", "Food", "2026-10-20_Cafe_120INR.jpg");
-        await h.Log.AppendPendingAsync(new MoveRequest(file.Id, kind, source, target, file.Sha256, before, after), Ct);
-        return new Crash(file, source, target, folderId);
+        var actionId = (await h.Log.AppendPendingAsync(
+            new MoveRequest(file.Id, kind, source, target, file.Sha256, before, after), Ct)).ShouldNotBeNull();
+        return new Crash(file, source, target, folderId, actionId);
     }
 
     private static void Finish(MoveHarness h, Crash crash) =>
@@ -89,7 +93,7 @@ public sealed class RecoveryTests(PostgresFixture postgres)
     {
         await using var h = await MoveHarness.CreateAsync(postgres);
         var crash = await CrashedAsync(h);
-        var temp = h.WriteOutput("receipt by", "Receipts", "Food", Path.GetFileName(crash.Target) + ".slothbox-tmp");
+        var temp = h.WriteOutput("receipt by", "Receipts", "Food", Path.GetFileName(crash.Temp));
 
         var recovered = (await h.Mover(sameVolume: false).RecoverPendingAsync(Ct)).ShouldHaveSingleItem();
 
@@ -163,7 +167,7 @@ public sealed class RecoveryTests(PostgresFixture postgres)
     {
         await using var h = await MoveHarness.CreateAsync(postgres);
         var crash = await CrashedAsync(h);
-        var temp = h.WriteOutput(Content, "Receipts", "Food", Path.GetFileName(crash.Target) + ".slothbox-tmp");
+        var temp = h.WriteOutput(Content, "Receipts", "Food", Path.GetFileName(crash.Temp));
         File.Delete(crash.Source);
 
         (await h.Mover(sameVolume: false).RecoverPendingAsync(Ct)).ShouldHaveSingleItem().Status.ShouldBe(ActionStatus.Done);
@@ -178,7 +182,7 @@ public sealed class RecoveryTests(PostgresFixture postgres)
     {
         await using var h = await MoveHarness.CreateAsync(postgres);
         var crash = await CrashedAsync(h);
-        var temp = h.WriteOutput("receipt by", "Receipts", "Food", Path.GetFileName(crash.Target) + ".slothbox-tmp");
+        var temp = h.WriteOutput("receipt by", "Receipts", "Food", Path.GetFileName(crash.Temp));
         File.Delete(crash.Source);
 
         var recovered = (await h.Mover(sameVolume: false).RecoverPendingAsync(Ct)).ShouldHaveSingleItem();
@@ -192,7 +196,7 @@ public sealed class RecoveryTests(PostgresFixture postgres)
     {
         await using var h = await MoveHarness.CreateAsync(postgres);
         var crash = await CrashedAsync(h);
-        var temp = h.WriteOutput(Content, "Receipts", "Food", Path.GetFileName(crash.Target) + ".slothbox-tmp");
+        var temp = h.WriteOutput(Content, "Receipts", "Food", Path.GetFileName(crash.Temp));
         h.WriteOutput("a file the user saved here", "Receipts", "Food", Path.GetFileName(crash.Target));
         File.Delete(crash.Source);
 
@@ -216,6 +220,23 @@ public sealed class RecoveryTests(PostgresFixture postgres)
             .Status.ShouldBe(ActionStatus.Failed);
 
         File.ReadAllText(foreign).ShouldBe("another file's only copy");
+    }
+
+    [Fact]
+    public async Task A_cross_drive_recovery_leaves_alone_the_temp_files_of_other_actions()
+    {
+        await using var h = await MoveHarness.CreateAsync(postgres);
+        var crash = await CrashedAsync(h);
+        var foreign = h.WriteOutput("another action's only copy", "Receipts", "Food",
+            Path.GetFileName(TempFiles.For(crash.Target, crash.ActionId + 1)));
+        var unnumbered = h.WriteOutput("a copy with no action number", "Receipts", "Food",
+            Path.GetFileName(crash.Target) + ".slothbox-tmp");
+
+        (await h.Mover(sameVolume: false).RecoverPendingAsync(Ct)).ShouldHaveSingleItem()
+            .Status.ShouldBe(ActionStatus.Failed);
+
+        File.ReadAllText(foreign).ShouldBe("another action's only copy");
+        File.ReadAllText(unnumbered).ShouldBe("a copy with no action number");
     }
 
     [Fact]

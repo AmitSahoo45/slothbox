@@ -32,6 +32,44 @@ internal sealed class FakeIgnoredHashes : IIgnoredHashes
     public Task<IReadOnlyList<IgnoredHash>> ListAsync(CancellationToken ct) => throw new NotSupportedException();
 }
 
+internal sealed class FixedSettings(SlothBoxSettings settings) : ISettingsStore
+{
+    public SlothBoxSettings Current { get; set; } = settings;
+}
+
+// Answers every analysis with the scripted result and keeps the requests it saw.
+internal sealed class ScriptedAnalyzer : IFileAnalyzer
+{
+    public List<AnalysisRequest> Requests { get; } = [];
+
+    public Func<AnalysisRequest, AnalysisResult> Answer { get; set; } =
+        _ => throw new InvalidOperationException("No analysis was scripted for this test.");
+
+    public Task<AnalysisResult> AnalyzeAsync(AnalysisRequest request, CancellationToken ct)
+    {
+        Requests.Add(request);
+        return Task.FromResult(Answer(request));
+    }
+}
+
+internal sealed class FakeEmbedder : IEmbedder
+{
+    public static readonly float[] Vector = Enumerable.Range(0, 768).Select(i => i / 768f).ToArray();
+
+    public List<(string Title, string Body)> Documents { get; } = [];
+    public Exception? Failure { get; set; }
+
+    public Task<float[]> EmbedDocumentAsync(string title, string body, CancellationToken ct)
+    {
+        if (Failure is not null)
+            throw Failure;
+        Documents.Add((title, body));
+        return Task.FromResult(Vector);
+    }
+
+    public Task<float[]> EmbedQueryAsync(string query, CancellationToken ct) => throw new NotSupportedException();
+}
+
 internal sealed class FakeFiles : IFileRepository
 {
     public List<FileRecord> Records { get; } = [];
@@ -40,5 +78,9 @@ internal sealed class FakeFiles : IFileRepository
         Task.FromResult(Records.FirstOrDefault(record => record.Sha256 == sha256));
 
     public Task<FileRecord?> GetAsync(Guid id, CancellationToken ct) => throw new NotSupportedException();
+    public Task<FileRecord?> FindUnfinishedAsync(string sha256, string originalPath, CancellationToken ct) =>
+        throw new NotSupportedException();
     public Task SaveAsync(FileRecord file, CancellationToken ct) => throw new NotSupportedException();
+    public Task SaveEmbeddingAsync(Guid id, float[] embedding, CancellationToken ct) =>
+        throw new NotSupportedException();
 }

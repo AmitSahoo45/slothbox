@@ -74,16 +74,6 @@
                 }
               }
             }
-          },
-          "501": {
-            "description": "Not Implemented",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            }
           }
         }
       }
@@ -170,16 +160,6 @@
           },
           "503": {
             "description": "Service Unavailable",
-            "content": {
-              "application/problem+json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ProblemDetails"
-                }
-              }
-            }
-          },
-          "501": {
-            "description": "Not Implemented",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -2812,6 +2792,14 @@
           }
         }
       },
+      "PauseReason": {
+        "enum": [
+          "user",
+          "drive_full",
+          "gemma_offline",
+          null
+        ]
+      },
       "PaymentMethod": {
         "enum": [
           "upi",
@@ -3412,6 +3400,14 @@
               "string"
             ],
             "format": "double"
+          },
+          "pauseReason": {
+            "enum": [
+              "user",
+              "drive_full",
+              "gemma_offline",
+              null
+            ]
           }
         }
       },
@@ -3457,6 +3453,16 @@
               "string"
             ],
             "format": "double"
+          },
+          "pauseReason": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/PauseReason"
+              }
+            ]
           }
         }
       },

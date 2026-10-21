@@ -9,4 +9,8 @@ public static class GateSkipReason
     public const string Baseline = "baseline";
     public const string Ignored = "ignored";
     public const string Missing = "missing";
+
+    // The pipeline's own reasons: the job's watched folder is gone, or switched off, since the job was queued.
+    public const string FolderRemoved = "folder_removed";
+    public const string FolderDisabled = "folder_disabled";
 }

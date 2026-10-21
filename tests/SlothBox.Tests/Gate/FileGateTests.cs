@@ -56,6 +56,7 @@ public sealed class FileGateTests : IDisposable
     [InlineData("desktop.ini")]
     [InlineData("Thumbs.db")]
     [InlineData("receipt.jpg.slothbox-tmp")]
+    [InlineData("receipt.jpg.17.slothbox-tmp")]
     public async Task Temporary_and_shell_files_are_skipped(string name) =>
         (await Check(OldFile(name))).ShouldBe(new GateResult.Skip(GateSkipReason.Temporary));
 

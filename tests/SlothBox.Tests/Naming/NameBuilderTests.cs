@@ -121,17 +121,6 @@ public sealed class NameBuilderTests
     }
 
     [Fact]
-    public void A_name_whose_temp_copy_is_still_there_counts_as_taken()
-    {
-        var taken = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
-        {
-            Path.Combine(Bills, "2026-10-20_Jio_599INR.jpg.slothbox-tmp")
-        };
-
-        Names.ResolveClash(Bills, "2026-10-20_Jio_599INR.jpg", taken.Contains).ShouldBe("2026-10-20_Jio_599INR-2.jpg");
-    }
-
-    [Fact]
     public void A_vendor_cut_never_splits_an_emoji() =>
         Names.BuildFileName(Receipt(new string('A', 29) + "😀", 599m), Source("IMG_2041.jpg"), Bills)
             .ShouldBe($"2026-10-20_{new string('A', 29)}_599INR.jpg");

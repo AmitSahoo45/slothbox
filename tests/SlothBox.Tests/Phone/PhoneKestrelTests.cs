@@ -35,6 +35,7 @@ public sealed class PhoneKestrelTests : IAsyncLifetime
         public Task<Job?> ClaimNextAsync(CancellationToken ct) => throw new NotSupportedException();
         public Task CompleteAsync(long jobId, JobOutcome outcome, CancellationToken ct) => throw new NotSupportedException();
         public Task<int> RequeueInterruptedAsync(CancellationToken ct) => throw new NotSupportedException();
+        public Task<QueueCounts> CountsAsync(CancellationToken ct) => Task.FromResult(new QueueCounts(0, 0));
     }
 
     // Hides its length, so HttpClient sends the body in chunks.

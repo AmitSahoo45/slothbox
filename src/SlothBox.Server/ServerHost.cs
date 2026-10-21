@@ -4,17 +4,37 @@ using System.Text.Json.Serialization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi;
 using Pgvector.EntityFrameworkCore;
+using SlothBox.Ai.Embed;
 using SlothBox.Core;
+using SlothBox.Core.Gate;
+using SlothBox.Core.Moving;
+using SlothBox.Core.Naming;
+using SlothBox.Core.Pipeline;
+using SlothBox.Core.Reading;
 using SlothBox.Data;
+using SlothBox.Data.Actions;
+using SlothBox.Data.Categories;
+using SlothBox.Data.Files;
+using SlothBox.Data.Folders;
 using SlothBox.Data.Queue;
 using SlothBox.Server.Api;
+using SlothBox.Server.Events;
 using SlothBox.Server.Phone;
 using SlothBox.Server.Settings;
+using SlothBox.Server.Worker;
 
 namespace SlothBox.Server;
 
 public static class ServerHost
 {
+    // Stands in for the Gemma analyzer until it is wired in: the worker reads it as "Gemma offline" and keeps
+    // checking, so uploads wait in the queue instead of failing.
+    private sealed class NoAnalyzerYet : IFileAnalyzer
+    {
+        public Task<AnalysisResult> AnalyzeAsync(AnalysisRequest request, CancellationToken ct) =>
+            throw new HttpRequestException("The Gemma analyzer is not part of this build yet.");
+    }
+
     public static WebApplication Build(string[] args)
     {
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions
@@ -33,7 +53,10 @@ public static class ServerHost
             DatabaseConnection.For(services.GetRequiredService<ISettingsStore>().Current,
                 Environment.GetEnvironmentVariable(DatabaseConnection.PasswordVariable)),
             npgsql => npgsql.UseVector()));
-        builder.Services.AddSingleton<IJobQueue, JobQueue>();
+        AddEngine(builder.Services);
+        // Test hosts run under "Testing" and must never reach the real database or Ollama.
+        if (!builder.Environment.IsEnvironment("Testing"))
+            builder.Services.AddHostedService<PipelineWorker>();
         builder.Services.AddSingleton(new PhonePage(EmbeddedUi.Files()));
         builder.Services.AddProblemDetails();
         builder.Services.ConfigureHttpJsonOptions(options =>
@@ -68,5 +91,42 @@ public static class ServerHost
         PhoneEndpoints.Map(app);
         EmbeddedUi.Map(app);
         return app;
+    }
+
+    // The pipeline (spec 5.1) and the worker that drives it, over the Data repositories and the Ollama clients.
+    private static void AddEngine(IServiceCollection services)
+    {
+        services.AddSingleton<IJobQueue, JobQueue>();
+        services.AddSingleton<IFileRepository, FileRepository>();
+        services.AddSingleton<IReceiptRepository, ReceiptRepository>();
+        services.AddSingleton<IIgnoredHashes, IgnoredHashes>();
+        services.AddSingleton<IActionLog, ActionLog>();
+        services.AddSingleton<ICategoryRepository, CategoryRepository>();
+        services.AddSingleton<IWatchedFolderRepository, WatchedFolderRepository>();
+        services.AddSingleton<IFileGate>(sp => new FileGate(sp.GetRequiredService<IWatchedFolderRepository>(),
+            sp.GetRequiredService<IIgnoredHashes>(), sp.GetRequiredService<IFileRepository>(),
+            sp.GetRequiredService<ISettingsStore>().Current.Pipeline));
+        services.AddSingleton<IContentReader>(sp =>
+            new ContentReader(sp.GetRequiredService<ISettingsStore>().Current.Pipeline));
+        services.AddSingleton<INameBuilder>(sp =>
+            new NameBuilder(sp.GetRequiredService<ISettingsStore>().Current.Pipeline));
+        services.AddSingleton<ISafeMover>(sp => new SafeMover(sp.GetRequiredService<IActionLog>(),
+            sp.GetRequiredService<IFileRepository>(), sp.GetRequiredService<IJobQueue>()));
+        services.AddSingleton<IEmbedder>(sp =>
+        {
+            var ollama = sp.GetRequiredService<ISettingsStore>().Current.Ollama;
+            // The client's own timeout sits above the per-attempt timeouts (spec 5.4), so those decide.
+            var http = new HttpClient
+            {
+                BaseAddress = new Uri(ollama.Url),
+                Timeout = TimeSpan.FromSeconds(ollama.AnalyzeTimeoutSeconds + 30)
+            };
+            return new Embedder(http, ollama);
+        });
+        services.AddSingleton<IFileAnalyzer, NoAnalyzerYet>();
+        services.AddSingleton<IFilePipeline, FilePipeline>();
+        services.AddSingleton<IDatabaseStartup, DatabaseStartup>();
+        services.AddSingleton<WorkerState>();
+        services.AddSingleton<ServerEvents>();
     }
 }

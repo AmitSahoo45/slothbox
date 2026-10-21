@@ -31,6 +31,9 @@ public interface IContentReader
     Task<FileContent> ReadAsync(string path, CancellationToken ct);
 }
 
+// Step 4: Gemma. Implemented in Ai. A connection failure (Ollama or Docker not running) surfaces as
+// HttpRequestException: the pipeline reads it as "Gemma offline" and the job waits (spec 9). A timeout after the
+// retry, or output that cannot be used, comes back as NeedsReview(BadOutput). No stray OperationCanceledException.
 public interface IFileAnalyzer
 {
     Task<AnalysisResult> AnalyzeAsync(AnalysisRequest request, CancellationToken ct);
@@ -42,7 +45,8 @@ public interface INameBuilder
     string BuildTargetFolder(string outputRoot, FileKind kind, string categoryFolder);
     // The name from spec 5.5; targetFolder is needed to keep the whole path under the length limit.
     string BuildFileName(Analysis analysis, SourceFileInfo info, string targetFolder);
-    // fileName, or fileName with -2, -3 and so on before the extension while that name is taken.
+    // fileName, or fileName with -2, -3 and so on before the extension while that name is taken. The pipeline's
+    // check is TempFiles.IsTaken, so a name whose temp copy still exists counts as taken (spec 5.5).
     string ResolveClash(string targetFolder, string fileName, Func<string, bool> isTaken);
 }
 
@@ -67,6 +71,8 @@ public interface IJobQueue
     Task CompleteAsync(long jobId, JobOutcome outcome, CancellationToken ct);
     // Startup: jobs left processing by a crashed run return to queued (spec 5.7). Returns how many.
     Task<int> RequeueInterruptedAsync(CancellationToken ct);
+    // How many jobs wait and how many are being worked on (the `queue.changed` event, spec 8.3).
+    Task<QueueCounts> CountsAsync(CancellationToken ct);
 }
 
 public interface IUndoService
@@ -108,7 +114,11 @@ public interface IFileRepository
 {
     Task<FileRecord?> GetAsync(Guid id, CancellationToken ct);
     Task<FileRecord?> FindFiledByHashAsync(string sha256, CancellationToken ct);
+    // The row of an earlier first filing of this content from this path that never finished (no done action);
+    // a retry reuses it instead of adding another (spec 6.2).
+    Task<FileRecord?> FindUnfinishedAsync(string sha256, string originalPath, CancellationToken ct);
     Task SaveAsync(FileRecord file, CancellationToken ct);
+    Task SaveEmbeddingAsync(Guid id, float[] embedding, CancellationToken ct);
 }
 
 public interface ICategoryRepository

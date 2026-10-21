@@ -58,6 +58,37 @@ public sealed class EndpointsTests(ServerFactory factory) : IClassFixture<Server
     }
 
     [Fact]
+    public async Task Status_carries_why_the_worker_is_paused()
+    {
+        using var client = factory.DashboardClient();
+        using var document = JsonDocument.Parse(await client.GetStringAsync("/openapi/v1.json",
+            TestContext.Current.CancellationToken));
+        var schemas = document.RootElement.GetProperty("components").GetProperty("schemas");
+        foreach (var schema in new[] { "StatusDto", "StatusChangedEvent" })
+        {
+            var properties = schemas.GetProperty(schema).GetProperty("properties");
+            properties.TryGetProperty("pauseReason", out _).ShouldBeTrue($"{schema}.pauseReason");
+            schemas.GetProperty(schema).GetProperty("required").EnumerateArray().Select(x => x.GetString())
+                .ShouldNotContain("pauseReason", "pauseReason is null while the worker runs.");
+        }
+        // The enum is only ever used as a nullable, so the generator lists null among its values.
+        schemas.GetProperty("PauseReason").GetProperty("enum").EnumerateArray().Select(x => x.GetString())
+            .Where(x => x is not null).ShouldBe(["user", "drive_full", "gemma_offline"]);
+    }
+
+    [Fact]
+    public async Task The_phone_routes_no_longer_document_a_501()
+    {
+        using var client = factory.DashboardClient();
+        using var document = JsonDocument.Parse(await client.GetStringAsync("/openapi/v1.json",
+            TestContext.Current.CancellationToken));
+        var paths = document.RootElement.GetProperty("paths");
+        foreach (var (path, method) in new[] { ("/u/{token}", "get"), ("/u/{token}/upload", "post") })
+            paths.GetProperty(path).GetProperty(method).GetProperty("responses").TryGetProperty("501", out _)
+                .ShouldBeFalse($"{method.ToUpperInvariant()} {path} is implemented.");
+    }
+
+    [Fact]
     public async Task Download_contracts_describe_raw_content_instead_of_base64()
     {
         using var client = factory.DashboardClient();

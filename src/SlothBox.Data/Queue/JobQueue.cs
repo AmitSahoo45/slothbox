@@ -47,6 +47,14 @@ public sealed class JobQueue(IDbContextFactory<SlothBoxDbContext> contexts) : IJ
             .SetProperty(job => job.UpdatedAt, DateTimeOffset.UtcNow), ct);
     }
 
+    public async Task<QueueCounts> CountsAsync(CancellationToken ct)
+    {
+        await using var db = await contexts.CreateDbContextAsync(ct);
+        var waiting = await db.Jobs.CountAsync(job => job.Status == JobStatus.Queued, ct);
+        var processing = await db.Jobs.CountAsync(job => job.Status == JobStatus.Processing, ct);
+        return new QueueCounts(waiting, processing);
+    }
+
     private static Job ToJob(StoredJob job) =>
         new(job.Id, new IncomingFile(job.Path, job.Origin, job.WatchedFolderId, job.CreatedAt), job.Status,
             job.Attempts, job.LastError, job.FileId);

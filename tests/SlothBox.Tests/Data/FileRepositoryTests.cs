@@ -1,5 +1,7 @@
+using Microsoft.EntityFrameworkCore;
 using SlothBox.Core;
 using SlothBox.Data;
+using SlothBox.Data.Actions;
 using SlothBox.Data.Files;
 
 namespace SlothBox.Tests.Data;
@@ -34,6 +36,47 @@ public sealed class FileRepositoryTests(PostgresFixture postgres)
         };
         await files.SaveAsync(filed, Ct);
         (await files.GetAsync(review.Id, Ct)).ShouldBe(filed);
+    }
+
+    [Fact]
+    public async Task An_unfinished_first_filing_is_found_by_content_and_path_until_its_action_is_done()
+    {
+        await using var db = await postgres.CreateDatabaseAsync(Ct);
+        var files = new FileRepository(db);
+        var log = new ActionLog(db);
+        const string source = @"D:\slothbox-test\watched\receipt.jpg";
+        var record = TestRecords.File("abc") with { OriginalPath = source, CurrentPath = source };
+        await files.SaveAsync(record, Ct);
+
+        (await files.FindUnfinishedAsync("abc", source, Ct))!.Id.ShouldBe(record.Id);
+        (await files.FindUnfinishedAsync("abc", @"D:\slothbox-test\elsewhere\receipt.jpg", Ct)).ShouldBeNull();
+        (await files.FindUnfinishedAsync("other", source, Ct)).ShouldBeNull();
+
+        var failed = (await log.AppendPendingAsync(new MoveRequest(record.Id, ActionKind.Move, source,
+            @"D:\slothbox-test\out\Receipts\Food\receipt.jpg", "abc"), Ct)).ShouldNotBeNull();
+        await log.CompleteAsync(failed, ActionStatus.Failed, "drive full", Ct);
+        (await files.FindUnfinishedAsync("abc", source, Ct))!.Id.ShouldBe(record.Id);
+
+        var done = (await log.AppendPendingAsync(new MoveRequest(record.Id, ActionKind.Move, source,
+            @"D:\slothbox-test\out\Receipts\Food\receipt.jpg", "abc"), Ct)).ShouldNotBeNull();
+        await log.CompleteAsync(done, ActionStatus.Done, null, Ct);
+        (await files.FindUnfinishedAsync("abc", source, Ct)).ShouldBeNull();
+    }
+
+    [Fact]
+    public async Task An_embedding_is_saved_on_the_file_row()
+    {
+        await using var db = await postgres.CreateDatabaseAsync(Ct);
+        var files = new FileRepository(db);
+        var record = TestRecords.File("abc");
+        await files.SaveAsync(record, Ct);
+        var vector = Enumerable.Range(0, 768).Select(i => i / 768f).ToArray();
+
+        await files.SaveEmbeddingAsync(record.Id, vector, Ct);
+
+        await using var context = db.CreateDbContext();
+        var stored = await context.Files.AsNoTracking().SingleAsync(f => f.Id == record.Id, Ct);
+        stored.Embedding.ShouldNotBeNull().ToArray().ShouldBe(vector);
     }
 
     [Fact]

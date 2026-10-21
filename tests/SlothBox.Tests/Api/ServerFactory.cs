@@ -20,6 +20,7 @@ public sealed class ServerFactory : WebApplicationFactory<Server.Program>
         public Task<Job?> ClaimNextAsync(CancellationToken ct) => Task.FromResult<Job?>(null);
         public Task CompleteAsync(long jobId, JobOutcome outcome, CancellationToken ct) => Task.CompletedTask;
         public Task<int> RequeueInterruptedAsync(CancellationToken ct) => Task.FromResult(0);
+        public Task<QueueCounts> CountsAsync(CancellationToken ct) => Task.FromResult(new QueueCounts(0, 0));
     }
 
     protected override void ConfigureWebHost(IWebHostBuilder builder) =>

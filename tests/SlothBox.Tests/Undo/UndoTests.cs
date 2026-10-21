@@ -1,5 +1,6 @@
 using SlothBox.Core;
 using SlothBox.Core.Gate;
+using SlothBox.Core.Undo;
 using SlothBox.Tests.Data;
 using SlothBox.Tests.Moving;
 
@@ -23,6 +24,25 @@ public sealed class UndoTests(PostgresFixture postgres)
         null, new ReceiptData("Jio", new DateOnly(2026, 10, 20), 599m, "INR", PaymentMethod.Upi));
 
     private sealed record Filing(FileRecord File, string Source, string Target);
+
+    // An action list read before another undo finished, as a second browser tab would hold it: the first read
+    // answers from that stale list, later reads see the database.
+    private sealed class StaleLog(IActionLog log, IReadOnlyList<FileAction> stale) : IActionLog
+    {
+        private IReadOnlyList<FileAction>? _stale = stale;
+
+        public Task<IReadOnlyList<FileAction>> GetForFileAsync(Guid fileId, CancellationToken ct) =>
+            Interlocked.Exchange(ref _stale, null) is { } list ? Task.FromResult(list) : log.GetForFileAsync(fileId, ct);
+        public Task<IReadOnlyList<FileAction>> GetDoneSinceAsync(DateTimeOffset since, CancellationToken ct) =>
+            Interlocked.Exchange(ref _stale, null) is { } list
+                ? Task.FromResult(list)
+                : log.GetDoneSinceAsync(since, ct);
+        public Task<long?> AppendPendingAsync(MoveRequest request, CancellationToken ct) =>
+            log.AppendPendingAsync(request, ct);
+        public Task CompleteAsync(long id, ActionStatus status, string? error, CancellationToken ct) =>
+            log.CompleteAsync(id, status, error, ct);
+        public Task<IReadOnlyList<FileAction>> GetPendingAsync(CancellationToken ct) => log.GetPendingAsync(ct);
+    }
 
     // A first filing: the file is recorded where it arrived, then moved (or copied) into the output folder.
     private static async Task<Filing> FileItAsync(MoveHarness h, string name, string content,
@@ -147,6 +167,23 @@ public sealed class UndoTests(PostgresFixture postgres)
     }
 
     [Fact]
+    public async Task A_stale_undo_of_a_copy_already_undone_is_refused_and_keeps_the_original()
+    {
+        await using var h = await MoveHarness.CreateAsync(postgres);
+        var filing = await FileItAsync(h, "PXL_0001.jpg", "camera roll photo", ActionKind.Copy);
+        var stale = await h.ActionsAsync(filing.File.Id);
+        (await h.Undo().UndoFileAsync(filing.File.Id, Ct)).Succeeded.ShouldBeTrue();
+        var staleUndo = new UndoService(new StaleLog(h.Log, stale), h.Files, h.Receipts, h.Mover());
+
+        var result = await staleUndo.UndoFileAsync(filing.File.Id, Ct);
+
+        result.ShouldBe(new UndoResult(filing.File.Id, false, null, FileChanged));
+        File.ReadAllText(filing.Source).ShouldBe("camera roll photo");
+        (await h.ActionsAsync(filing.File.Id)).Count.ShouldBe(2);
+        (await h.FileAsync(filing.File.Id)).Status.ShouldBe(FileStatus.Undone);
+    }
+
+    [Fact]
     public async Task A_second_undo_started_from_a_stale_view_cannot_undo_the_file_again()
     {
         await using var h = await MoveHarness.CreateAsync(postgres);
@@ -206,6 +243,25 @@ public sealed class UndoTests(PostgresFixture postgres)
         (await h.SnapshotAsync(filing.File.Id)).ShouldBe(new FileSnapshot(FileStatus.Undone, FileKind.Receipt, 5,
             "Jio recharge", null, new ReceiptData("Jio", null, 599m, "INR", PaymentMethod.Upi)));
         (await h.Ignored.ContainsAsync(filing.File.Sha256, Ct)).ShouldBeTrue();
+    }
+
+    [Fact]
+    public async Task A_first_filing_can_still_be_undone_after_its_refile_was_undone_to_a_restored_name()
+    {
+        await using var h = await MoveHarness.CreateAsync(postgres);
+        var filing = await FileItAsync(h, "IMG_2041.jpg", "receipt photo", state: InReview,
+            target: ["Needs review", "IMG_2041.jpg"]);
+        await RefileAsync(h, filing, h.Output("Receipts", "Bills and recharges", "2026-10-20_Jio_599INR.jpg"));
+        File.WriteAllText(filing.Target, "another file that took the name meanwhile");
+        var restored = Path.Combine(h.Output("Needs review"), "IMG_2041 (restored).jpg");
+        (await h.Undo().UndoFileAsync(filing.File.Id, Ct)).ShouldBe(new UndoResult(filing.File.Id, true, restored, null));
+
+        var result = await h.Undo().UndoFileAsync(filing.File.Id, Ct);
+
+        result.ShouldBe(new UndoResult(filing.File.Id, true, filing.Source, null));
+        File.ReadAllText(filing.Source).ShouldBe("receipt photo");
+        File.Exists(restored).ShouldBeFalse();
+        (await h.FileAsync(filing.File.Id)).Status.ShouldBe(FileStatus.Undone);
     }
 
     [Fact]

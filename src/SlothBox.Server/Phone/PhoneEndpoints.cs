@@ -33,13 +33,12 @@ public static class PhoneEndpoints
         app.MapGet("/u/{token}", GetPage)
             .WithMetadata(new PhoneEndpoint()).WithName("GetPhonePage").WithTags("Phone")
             .Produces<string>(200, "text/html").Produces<string>(401, "text/html").Produces(404)
-            .ProducesProblem(503).ProducesProblem(StatusCodes.Status501NotImplemented);
+            .ProducesProblem(503);
         app.MapPost("/u/{token}/upload", UploadAsync)
             .WithMetadata(new PhoneEndpoint()).WithName("UploadPhoneFile").WithTags("Phone")
             .Accepts<PhoneUploadRequest>("multipart/form-data")
             .Produces<PhoneUploadResultDto>().ProducesProblem(400).ProducesProblem(401).Produces(404)
-            .ProducesProblem(413).ProducesProblem(415).ProducesProblem(503)
-            .ProducesProblem(StatusCodes.Status501NotImplemented);
+            .ProducesProblem(413).ProducesProblem(415).ProducesProblem(503);
     }
 
     private static IResult GetPage(string token, ISettingsStore settings, PhonePage page, HttpContext context)

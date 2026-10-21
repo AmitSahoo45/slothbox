@@ -46,12 +46,7 @@ public sealed class NameBuilder(PipelineSettings settings) : INameBuilder
 
     public string ResolveClash(string targetFolder, string fileName, Func<string, bool> isTaken)
     {
-        // A name whose temp copy is still there is taken too: that temp may be the only copy of another file.
-        bool Taken(string name)
-        {
-            var path = Path.Combine(targetFolder, name);
-            return isTaken(path) || isTaken(path + TempFiles.Suffix);
-        }
+        bool Taken(string name) => isTaken(Path.Combine(targetFolder, name));
 
         if (!Taken(fileName))
             return fileName;

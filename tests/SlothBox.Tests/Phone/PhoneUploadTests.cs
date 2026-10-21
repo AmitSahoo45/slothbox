@@ -44,6 +44,7 @@ public sealed class PhoneUploadTests : IDisposable
         public Task<Job?> ClaimNextAsync(CancellationToken ct) => throw new NotSupportedException();
         public Task CompleteAsync(long jobId, JobOutcome outcome, CancellationToken ct) => throw new NotSupportedException();
         public Task<int> RequeueInterruptedAsync(CancellationToken ct) => throw new NotSupportedException();
+        public Task<QueueCounts> CountsAsync(CancellationToken ct) => throw new NotSupportedException();
     }
 
     private sealed class PhoneServer(ISettingsStore settings, IJobQueue queue, IFileProvider pageFiles)

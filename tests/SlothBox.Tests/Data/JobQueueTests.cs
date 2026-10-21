@@ -35,6 +35,22 @@ public sealed class JobQueueTests(PostgresFixture postgres)
     }
 
     [Fact]
+    public async Task Counts_report_the_waiting_and_processing_jobs()
+    {
+        await using var db = await postgres.CreateDatabaseAsync(Ct);
+        var queue = new JobQueue(db);
+        (await queue.CountsAsync(Ct)).ShouldBe(new QueueCounts(0, 0));
+        await queue.EnqueueAsync(Seen(Bill), Ct);
+        await queue.EnqueueAsync(Seen(Photo), Ct);
+        var claimed = (await queue.ClaimNextAsync(Ct)).ShouldNotBeNull();
+
+        (await queue.CountsAsync(Ct)).ShouldBe(new QueueCounts(1, 1));
+
+        await queue.CompleteAsync(claimed.Id, new JobOutcome(JobStatus.Done), Ct);
+        (await queue.CountsAsync(Ct)).ShouldBe(new QueueCounts(1, 0));
+    }
+
+    [Fact]
     public async Task Concurrent_enqueues_of_one_path_make_one_job()
     {
         await using var db = await postgres.CreateDatabaseAsync(Ct);

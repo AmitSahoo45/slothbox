@@ -171,6 +171,30 @@ public sealed class SafeMoveTests(PostgresFixture postgres)
     }
 
     [Fact]
+    public async Task An_original_edited_while_it_was_being_copied_across_drives_is_kept_and_the_copy_rolled_back()
+    {
+        await using var h = await MoveHarness.CreateAsync(postgres);
+        var source = h.Watched("notes.txt", "first draft");
+        var file = await h.AddFileAsync(source);
+        var target = h.Output("Documents", "Work", "notes.txt");
+        // The editor saves again the moment the copy is complete, before SlothBox removes the original.
+        var mover = h.Mover(sameVolume: false, copy: async (from, to, ct) =>
+        {
+            await SafeMover.CopyNewAsync(from, to, ct);
+            File.WriteAllText(from, "second draft");
+        });
+
+        var result = await mover.MoveAsync(new MoveRequest(file.Id, ActionKind.Move, source, target, file.Sha256), Ct);
+
+        result.Succeeded.ShouldBeFalse();
+        File.ReadAllText(source).ShouldBe("second draft");
+        File.Exists(target).ShouldBeFalse();
+        Directory.EnumerateFiles(Path.GetDirectoryName(target)!).ShouldBeEmpty();
+        (await h.ActionsAsync(file.Id)).ShouldHaveSingleItem().Status.ShouldBe(ActionStatus.Failed);
+        (await h.FileAsync(file.Id)).CurrentPath.ShouldBe(source);
+    }
+
+    [Fact]
     public async Task A_refile_logs_the_before_state_and_applies_the_new_state()
     {
         await using var h = await MoveHarness.CreateAsync(postgres);
@@ -236,9 +260,48 @@ public sealed class SafeMoveTests(PostgresFixture postgres)
         var result = await h.Mover().MoveAsync(
             inProgress with { To = h.Output("Receipts", "Food", "b.jpg") }, Ct);
 
-        result.ShouldBe(new MoveResult(false, null, null, ChangedMeanwhile));
+        result.ShouldBe(new MoveResult(false, null, null, ChangedMeanwhile, MoveFailure.ChangedMeanwhile));
         File.ReadAllText(source).ShouldBe("receipt photo");
         (await h.ActionsAsync(file.Id)).ShouldHaveSingleItem();
+    }
+
+    [Theory]
+    [InlineData(unchecked((int)0x80070070))]
+    [InlineData(unchecked((int)0x80070027))]
+    [InlineData(28)]
+    public async Task A_full_output_drive_fails_the_move_with_the_drive_full_code_and_keeps_the_original(int hresult)
+    {
+        await using var h = await MoveHarness.CreateAsync(postgres);
+        var source = h.Watched("video.mp4", "a large video");
+        var file = await h.AddFileAsync(source);
+        var target = h.Output("Other", "Media", "video.mp4");
+        // ERROR_DISK_FULL and ERROR_HANDLE_DISK_FULL on Windows, ENOSPC elsewhere.
+        var mover = h.Mover(sameVolume: false,
+            copy: (_, _, _) => throw new IOException("There is not enough space on the disk.", hresult));
+
+        var result = await mover.MoveAsync(new MoveRequest(file.Id, ActionKind.Move, source, target, file.Sha256), Ct);
+
+        (result.Succeeded, result.Failure).ShouldBe((false, (MoveFailure?)MoveFailure.DriveFull));
+        result.Error.ShouldNotBeNullOrWhiteSpace();
+        File.ReadAllText(source).ShouldBe("a large video");
+        Directory.EnumerateFiles(Path.GetDirectoryName(target)!).ShouldBeEmpty();
+        (await h.ActionsAsync(file.Id)).ShouldHaveSingleItem().Status.ShouldBe(ActionStatus.Failed);
+    }
+
+    [Fact]
+    public async Task Any_other_io_error_carries_the_io_error_code()
+    {
+        await using var h = await MoveHarness.CreateAsync(postgres);
+        var source = h.Watched("video.mp4", "a large video");
+        var file = await h.AddFileAsync(source);
+        var target = h.Output("Other", "Media", "video.mp4");
+        var mover = h.Mover(sameVolume: false,
+            copy: (_, _, _) => throw new IOException("The specified network name is no longer available."));
+
+        var result = await mover.MoveAsync(new MoveRequest(file.Id, ActionKind.Move, source, target, file.Sha256), Ct);
+
+        (result.Succeeded, result.Failure).ShouldBe((false, (MoveFailure?)MoveFailure.IoError));
+        File.ReadAllText(source).ShouldBe("a large video");
     }
 
     [Fact]
@@ -260,23 +323,43 @@ public sealed class SafeMoveTests(PostgresFixture postgres)
     }
 
     [Fact]
-    public async Task A_temp_copy_left_by_an_earlier_move_is_never_overwritten()
+    public async Task A_temp_copy_left_by_an_earlier_move_is_left_alone_and_the_move_still_succeeds()
     {
         await using var h = await MoveHarness.CreateAsync(postgres);
         var source = h.Watched("IMG_2041.jpg", "receipt photo");
         var file = await h.AddFileAsync(source);
         var target = h.Output("Receipts", "Food", "2026-10-20_Cafe_120INR.jpg");
-        var earlier = h.WriteOutput("an earlier, unrelated copy", "Receipts", "Food",
+        var earlier = h.WriteOutput("an earlier move's only copy", "Receipts", "Food",
             "2026-10-20_Cafe_120INR.jpg.slothbox-tmp");
 
         var result = await h.Mover(sameVolume: false)
             .MoveAsync(new MoveRequest(file.Id, ActionKind.Move, source, target, file.Sha256), Ct);
 
+        result.Succeeded.ShouldBeTrue();
+        File.ReadAllText(earlier).ShouldBe("an earlier move's only copy");
+        File.ReadAllText(target).ShouldBe("receipt photo");
+        Directory.EnumerateFiles(Path.GetDirectoryName(target)!).Count().ShouldBe(2);
+    }
+
+    [Fact]
+    public async Task A_temp_name_already_taken_fails_the_move_without_touching_that_file()
+    {
+        await using var h = await MoveHarness.CreateAsync(postgres);
+        var source = h.Watched("IMG_2041.jpg", "receipt photo");
+        var file = await h.AddFileAsync(source);
+        var target = h.Output("Receipts", "Food", "2026-10-20_Cafe_120INR.jpg");
+        // A fresh database numbers its first action 1, so this is the temp name the move will want.
+        var taken = h.WriteOutput("not SlothBox's bytes", "Receipts", "Food",
+            Path.GetFileName(TempFiles.For(target, 1)));
+
+        var result = await h.Mover(sameVolume: false)
+            .MoveAsync(new MoveRequest(file.Id, ActionKind.Move, source, target, file.Sha256), Ct);
+
         result.Succeeded.ShouldBeFalse();
-        result.Error.ShouldNotBeNull().ShouldContain(earlier);
-        File.ReadAllText(earlier).ShouldBe("an earlier, unrelated copy");
+        File.ReadAllText(taken).ShouldBe("not SlothBox's bytes");
         File.ReadAllText(source).ShouldBe("receipt photo");
         File.Exists(target).ShouldBeFalse();
+        (await h.ActionsAsync(file.Id)).ShouldHaveSingleItem().Status.ShouldBe(ActionStatus.Failed);
     }
 
     [Fact]
@@ -295,6 +378,22 @@ public sealed class SafeMoveTests(PostgresFixture postgres)
         File.ReadAllText(original).ShouldBe("camera roll photo");
         (await h.ActionsAsync(file.Id)).ShouldHaveSingleItem().Kind.ShouldBe(ActionKind.DeleteCopy);
         (await h.FileAsync(file.Id)).CurrentPath.ShouldBe(original);
+    }
+
+    [Fact]
+    public async Task A_copy_deletion_whose_copy_and_original_are_the_same_path_is_refused_without_a_log_row()
+    {
+        await using var h = await MoveHarness.CreateAsync(postgres);
+        var original = h.Watched("PXL_0001.jpg", "camera roll photo");
+        var file = await h.AddFileAsync(original);
+
+        var result = await h.Mover()
+            .MoveAsync(new MoveRequest(file.Id, ActionKind.DeleteCopy, original, original, file.Sha256), Ct);
+
+        result.Succeeded.ShouldBeFalse();
+        result.Error.ShouldNotBeNullOrWhiteSpace();
+        File.ReadAllText(original).ShouldBe("camera roll photo");
+        (await h.ActionsAsync(file.Id)).ShouldBeEmpty();
     }
 
     [Fact]

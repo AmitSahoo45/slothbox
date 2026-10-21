@@ -57,6 +57,10 @@ public sealed class UndoService(
 
     private async Task<UndoResult> UndoAsync(FileAction action, CancellationToken ct)
     {
+        // The action must still be the file's newest live one: a stale list may show an action whose copy was
+        // already undone, and reversing that again would delete the original.
+        if (Live(await log.GetForFileAsync(action.FileId, ct)).FirstOrDefault()?.Id != action.Id)
+            return Refused(action.FileId, FileChanged);
         var file = await files.GetAsync(action.FileId, ct);
         if (file is null)
             return Refused(action.FileId, FileChanged);

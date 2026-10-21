@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Pgvector;
 using SlothBox.Core;
 
 namespace SlothBox.Data.Files;
@@ -23,6 +24,27 @@ public sealed class FileRepository(IDbContextFactory<SlothBoxDbContext> contexts
             .OrderBy(f => f.CreatedAt)
             .FirstOrDefaultAsync(ct);
         return file is null ? null : ToRecord(file);
+    }
+
+    public async Task<FileRecord?> FindUnfinishedAsync(string sha256, string originalPath, CancellationToken ct)
+    {
+        await using var db = await contexts.CreateDbContextAsync(ct);
+        var file = await db.Files.AsNoTracking()
+            .Where(f => f.Sha256 == sha256 && f.OriginalPath == originalPath &&
+                !db.Actions.Any(a => a.FileId == f.Id && a.Status == ActionStatus.Done))
+            .OrderByDescending(f => f.CreatedAt)
+            .FirstOrDefaultAsync(ct);
+        return file is null ? null : ToRecord(file);
+    }
+
+    public async Task SaveEmbeddingAsync(Guid id, float[] embedding, CancellationToken ct)
+    {
+        await using var db = await contexts.CreateDbContextAsync(ct);
+        var vector = new Vector(embedding);
+        var now = DateTimeOffset.UtcNow;
+        await db.Files.Where(f => f.Id == id).ExecuteUpdateAsync(set => set
+            .SetProperty(f => f.Embedding, vector)
+            .SetProperty(f => f.UpdatedAt, now), ct);
     }
 
     public async Task SaveAsync(FileRecord record, CancellationToken ct)

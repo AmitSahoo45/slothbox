@@ -21,7 +21,9 @@ public sealed class ActionLog(IDbContextFactory<SlothBoxDbContext> contexts) : I
         var file = (await db.Files.FromSql($"SELECT * FROM files WHERE id = {request.FileId} FOR UPDATE")
             .ToListAsync(ct)).Single();
         var receipt = await db.Receipts.SingleOrDefaultAsync(r => r.FileId == file.Id, ct);
+        // Under the lock, the change must start from where the file is now; a request built from a stale view does not.
         if (await db.Actions.AnyAsync(a => a.FileId == file.Id && a.Status == ActionStatus.Pending, ct) ||
+            !string.Equals(file.CurrentPath, request.From, StringComparison.Ordinal) ||
             request.Before is { } expected && expected != ToSnapshot(file, receipt))
             return null;
 
