@@ -56,12 +56,6 @@ internal static class StubEndpoints
 
         app.MapGet("/events", () => Results.Text(": ready\n\n", "text/event-stream"))
             .WithName("GetEvents").WithTags("Events").Produces<string>(200, "text/event-stream");
-        app.MapGet("/u/{token}", (string token) => NotImplemented())
-            .WithMetadata(new PhoneEndpoint()).WithName("GetPhonePage").WithTags("Phone")
-            .Produces<string>(200, "text/html").ProducesProblem(501);
-        Document<PhoneUploadResultDto>(app.MapPost("/u/{token}/upload", (string token) => NotImplemented())
-            .WithMetadata(new PhoneEndpoint()).Accepts<PhoneUploadRequest>("multipart/form-data")
-            .WithTags("Phone"), "UploadPhoneFile");
     }
 
     private static void Document<T>(RouteHandlerBuilder route, string name) =>

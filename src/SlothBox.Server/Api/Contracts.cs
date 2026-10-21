@@ -4,8 +4,11 @@ namespace SlothBox.Server.Api;
 
 public sealed record ServiceStatusDto(bool Ready, string? Message);
 public sealed record ModelStatusDto(string Name, bool Present, bool Loaded, bool OnGpu);
+// Why the worker is paused: by the user, or by itself (spec 9). Null while it runs.
+public enum PauseReason { User, DriveFull, GemmaOffline }
 public record StatusDto(ServiceStatusDto Gemma, ModelStatusDto VisionModel, ModelStatusDto EmbeddingModel,
-    ServiceStatusDto Database, QueueChangedEvent Queue, bool Paused, bool SetupComplete, double? AverageSecondsPerFileToday);
+    ServiceStatusDto Database, QueueChangedEvent Queue, bool Paused, bool SetupComplete,
+    double? AverageSecondsPerFileToday, PauseReason? PauseReason = null);
 public sealed record MutationResultDto(bool Success, string? Message);
 public sealed record ReceiptDto(string? Vendor, DateOnly? Date, decimal? Amount, string? Currency,
     PaymentMethod PaymentMethod);
@@ -88,6 +91,7 @@ public sealed record FileRefiledEvent : ActivityItemDto;
 public sealed record QueueChangedEvent(int Waiting, int Processing);
 public sealed record StatusChangedEvent(ServiceStatusDto Gemma, ModelStatusDto VisionModel,
     ModelStatusDto EmbeddingModel, ServiceStatusDto Database, QueueChangedEvent Queue, bool Paused,
-    bool SetupComplete, double? AverageSecondsPerFileToday)
-    : StatusDto(Gemma, VisionModel, EmbeddingModel, Database, Queue, Paused, SetupComplete, AverageSecondsPerFileToday);
+    bool SetupComplete, double? AverageSecondsPerFileToday, PauseReason? PauseReason = null)
+    : StatusDto(Gemma, VisionModel, EmbeddingModel, Database, Queue, Paused, SetupComplete, AverageSecondsPerFileToday,
+        PauseReason);
 public sealed record FolderTidyProgressEvent(int FolderId, int Done, int Total);

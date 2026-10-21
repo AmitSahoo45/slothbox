@@ -1,5 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <ItemGroup>
     <ProjectReference Include="../SlothBox.Core/SlothBox.Core.csproj" />
+    <PackageReference Include="OllamaSharp" />
   </ItemGroup>
 </Project>

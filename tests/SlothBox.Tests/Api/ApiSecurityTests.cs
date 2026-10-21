@@ -94,8 +94,9 @@ public sealed class ApiSecurityTests(ServerFactory factory) : IClassFixture<Serv
     [Theory]
     [InlineData("GET", "/u/synthetic-test-token")]
     [InlineData("POST", "/u/synthetic-test-token/upload")]
-    public async Task Phone_route_stubs_are_available_only_on_the_phone_listener(string method, string path)
+    public async Task Phone_routes_are_available_only_on_the_phone_listener(string method, string path)
     {
+        // The phone listener answers (the synthetic token is wrong, so 401); the dashboard port does not.
         var response = await factory.Server.SendAsync(context =>
         {
             context.Connection.LocalPort = 5081;
@@ -105,7 +106,7 @@ public sealed class ApiSecurityTests(ServerFactory factory) : IClassFixture<Serv
             if (method == "POST")
                 context.Request.ContentType = "multipart/form-data; boundary=synthetic";
         }, TestContext.Current.CancellationToken);
-        response.Response.StatusCode.ShouldBe(501);
+        response.Response.StatusCode.ShouldBe(401);
         using var client = factory.DashboardClient();
         using var request = new HttpRequestMessage(new HttpMethod(method), path);
         if (method == "POST")

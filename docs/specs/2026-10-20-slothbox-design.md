@@ -355,6 +355,10 @@ Inputs are a list the user manages on the Folders page (Section 7.4.6).
 | A cloud-synced folder (under the `OneDrive`, `OneDriveConsumer` or `OneDriveCommercial` paths, or containing a `Google Drive` or `Dropbox` segment) | Allowed, mode forced to Copy only: moving a file out would delete it from the cloud |
 | Missing or no access | Refused, with the reason |
 
+- **Order:** device paths (`\\?\`, `\\.\`), network, relative paths, drive root, system folder, output folder, watched folders, missing or no access, then cloud. A network path is judged before anything touches it. Device and relative paths (including a bare `D:`) are refused with "Use a full folder path, like D:\Scans."
+- **"Inside"** compares whole folder names, without regard to case: `Windows Backups` is not inside `Windows`. A folder that only contains a system or output folder is not refused, because watchers do not look into subfolders.
+- **Cloud:** `Dropbox (Work)` and similar team folders count as Dropbox. Google Drive for desktop's `My Drive` and `Shared drives` folders count as Google Drive.
+
 **Existing files (D25)**
 - When a folder is added, SlothBox records every file path already in it as the folder's baseline (A17).
 - The sweep and the watcher skip baseline paths for good, even if those files are later edited.
@@ -418,7 +422,7 @@ Inputs are a list the user manages on the Folders page (Section 7.4.6).
 | Ollama client | OllamaSharp | MIT |
 | Postgres | Npgsql.EntityFrameworkCore.PostgreSQL | PostgreSQL |
 | Vectors | Pgvector.EntityFrameworkCore | MIT |
-| PDF text | UglyToad.PdfPig | Apache 2.0 |
+| PDF text | PdfPig (namespace `UglyToad.PdfPig`) | Apache 2.0 |
 | DOCX text | DocumentFormat.OpenXml | MIT |
 | Images (decode, EXIF orientation, resize) | SkiaSharp (+ `SkiaSharp.NativeAssets.Linux` in the test project for CI) | MIT |
 | QR code | QRCoder | MIT |
@@ -483,18 +487,20 @@ public interface IFileAnalyzer
     Task<AnalysisResult> AnalyzeAsync(AnalysisRequest request, CancellationToken ct);
 }
 
-// Step 5: naming. Pure function, no I/O.
+// Step 5: naming. Pure functions, no I/O: the clash check is passed in.
 public interface INameBuilder
 {
-    string BuildFileName(Analysis analysis, SourceFileInfo info);
-    string BuildTargetFolder(FileKind kind, string categoryFolder);
+    string BuildTargetFolder(string outputRoot, FileKind kind, string categoryFolder);
+    string BuildFileName(Analysis analysis, SourceFileInfo info, string targetFolder); // folder sets the length budget
+    string ResolveClash(string targetFolder, string fileName, Func<string, bool> isTaken); // -2, -3, ...
 }
 
-// Step 5: moving. Copy, verify hash, delete original (Move mode only). Records actions through IActionLog.
+// Step 5 and undo: every file change (move, copy, undo_move, delete_copy) as a logged action (6.4).
+// The request carries the recorded hash, the file's state before the change and the state it takes with it.
 public interface ISafeMover
 {
-    Task<MoveResult> MoveAsync(Guid fileId, string from, string to, FolderMode mode, CancellationToken ct);
-    Task RecoverPendingAsync(CancellationToken ct);
+    Task<MoveResult> MoveAsync(MoveRequest request, CancellationToken ct);
+    Task<IReadOnlyList<RecoveredAction>> RecoverPendingAsync(CancellationToken ct); // 6.5; the host logs failures
 }
 
 // Step 6: EmbeddingGemma. Implemented in Ai.
@@ -510,6 +516,7 @@ public interface IJobQueue
     Task EnqueueAsync(IncomingFile file, CancellationToken ct); // no-op if the path is already queued or processing
     Task<Job?> ClaimNextAsync(CancellationToken ct);
     Task CompleteAsync(long jobId, JobOutcome outcome, CancellationToken ct);
+    Task<int> RequeueInterruptedAsync(CancellationToken ct); // startup: processing jobs return to queued (5.7)
 }
 
 public interface IUndoService
@@ -583,11 +590,11 @@ flowchart TD
 | Step | What happens | Rules |
 |---|---|---|
 | 1. Detect | A watcher event (Created, Renamed), the 5-min sweep, or a phone upload creates a job. | One queued or processing job per path; a duplicate enqueue is ignored. |
-| 2. Wait and check | Waits until size and last-write time are unchanged for 3 s **and** the file opens with `FileShare.None`. Then computes SHA-256. | **Skip:** temp, hidden and system files (5.3); paths in the folder's baseline; hashes in `ignored_hashes`. **Duplicate:** same hash already filed → `Duplicates`. **Locked:** retried for up to 10 min, then left for the next sweep. |
-| 3. Read content | **Images:** decoded with SkiaSharp, rotated by EXIF orientation, resized so the long edge is at most 1,600 px, encoded as JPEG quality 85. **PDF:** text via PdfPig. **DOCX:** text via OpenXml. **TXT, MD, CSV:** read as UTF-8. **Office files not parsed in v1** (XLSX, PPTX): name only. **Installers, archives, media:** name only. | Text sent to Gemma: first 6,000 characters. Text stored for keyword search: first 20,000 characters. A PDF with under 50 characters of text in its first 3 pages counts as scanned → Needs review. Password-protected PDF or DOCX → Needs review. HEIC → Needs review. |
+| 2. Wait and check | Waits until size and last-write time are unchanged for 3 s **and** the file opens with `FileShare.None`. A file last written 3 s or more ago already counts as unchanged, so existing files are not made to wait again. Then computes SHA-256. | **Skip:** temp, hidden and system files (5.3); paths in the folder's baseline; hashes in `ignored_hashes`; jobs whose watched folder has since been removed or switched off (without the folder's mode, a copy-only file could be moved). **Duplicate:** same hash already filed or in Needs review (a filing that never finished does not count) → `Duplicates`. **Locked:** the worker queues it again every 30 s for up to 10 min, then leaves it for the next sweep. |
+| 3. Read content | **Images:** decoded with SkiaSharp, rotated by EXIF orientation, resized so the long edge is at most 1,600 px, encoded as JPEG quality 85. **PDF:** text via PdfPig. **DOCX:** text via OpenXml. **TXT, MD, CSV:** read as UTF-8. **Office files not parsed in v1** (XLSX, PPTX): name only. **Installers, archives, media:** name only. | Text sent to Gemma: first 6,000 characters. Text stored for keyword search: first 20,000 characters. A PDF with under 50 characters of text (spaces not counted) in its first 3 pages counts as scanned → Needs review. Password-protected PDF or DOCX → Needs review (a protected `.docx` is an OLE compound file, not a zip). HEIC → Needs review. A file that does not parse as its extension says is read by name only. Images with transparency are flattened onto white. Images are decoded at a reduced scale where the format allows; one still over 50 megapixels is read by name only. DOCX text is streamed and stops at the stored limit. Stored text drops NUL and other control characters (tab, CR and LF stay) and never ends in half a surrogate pair, so Postgres can always store it. |
 | 4. Ask Gemma | One call: content, the full category list with descriptions, the folder label as a hint, and the original file name. Ollama's JSON-schema `format` forces the output shape. | Timeout 120 s, one retry. Name-only files of type `other` skip this step. |
 | 5. Name and move | Validate (5.2), build the name (5.5), choose the folder, then safe move (6.4). | Copy-only folders: the file is copied, never moved. |
-| 6. Index | Embed (5.6), write the vector, update the keyword index, push an SSE event to the UI (Section 8.3). | Tray notification only for Needs review. |
+| 6. Index | Embed (5.6), write the vector, update the keyword index, push an SSE event to the UI (Section 8.3). | Only filed files are embedded; a Needs review item is indexed when it is resolved, and duplicates never are. Files Gemma never reads are embedded by name and category, so search still finds them. Tray notification only for Needs review. |
 
 ### 5.2 Validation after Gemma (rules, not confidence)
 
@@ -597,10 +604,16 @@ A file goes to **Needs review** when any of these is true:
 3. `type` is `receipt` and `amount` or `date` is null.
 4. Reading failed in step 3 (HEIC, scanned PDF, password-protected file).
 
+A receipt missing both date and amount gets `missing_date`.
+
 **Corrections applied without sending the file to review**
-- `category` not in the user's list for that type → `"Other"`.
+- `category` not in the user's list for that type → `"Other"`. Names match without regard to case and take the list's spelling.
+- `receipt` fields on any other type are dropped.
 - `currency` null on a receipt that has an amount → `INR`, configurable (A10).
 - `payment_method` null → `unknown`.
+- `currency` that is not a 3-letter code → null, then the rule above (the ledger column is `char(3)`).
+- `amount` of 10,000,000,000 or more → null, so the receipt gets `missing_amount` (the ledger column is `numeric(12,2)`).
+- Control characters in Gemma's strings are removed, so Postgres can store them.
 
 **Stored reason codes** (shown in the UI with the copy in Section 7.6)
 `bad_output`, `unknown_type`, `missing_date`, `missing_amount`, `heic`, `scanned_pdf`, `password_protected`
@@ -617,7 +630,7 @@ A file goes to **Needs review** when any of these is true:
 | Media | `.mp4 .mkv .mov .mp3 .wav .m4a .gif` | Name only | No | `other` → `Other\Media` |
 | Anything else | — | Name only | No | `other` → `Other\Misc` (A8) |
 | v1 limits | `.heic .heif`, scanned PDF, password-protected | — | No | Needs review |
-| Always skipped | `.crdownload .part .partial .tmp .download`, names starting `~$`, `desktop.ini`, `Thumbs.db`, hidden or system files | — | — | — |
+| Always skipped | `.crdownload .part .partial .tmp .download`, SlothBox's own `.slothbox-tmp` copies (6.4), names starting `~$`, `desktop.ini`, `Thumbs.db`, hidden or system files | — | — | — |
 
 ### 5.4 The Gemma call
 
@@ -684,6 +697,10 @@ Content: {extracted text, or the attached image}
 
 If Ollama rejects nullable types (`["string", "null"]`) when converting the schema, use empty strings and `0` instead of null, and map them back to null in code. Verify this on the first call.
 
+**Nullable support (verified 21 Oct 2026, E7):** Ollama 0.40.2 with `gemma4:e4b` accepts this schema, nullable types included, and the reply matched it, so the fallback schema is not used. The parser still reads `""` and `0` in receipt fields as null, so either schema works.
+
+**Category copy:** on that call Gemma returned the whole list entry (`Groceries — Supermarket and grocery bills`) as `category`. The parser maps such an entry back to the listed name, so it still matches the list (5.2); a name that itself contains ` — ` is kept whole.
+
 **Example output**
 
 ```json
@@ -717,15 +734,15 @@ Gemma never writes the file name. It returns fields, and `INameBuilder` builds t
 | Document | `{title}` | `dotnet-10-release-notes.pdf` |
 | Other | original name, unchanged | `ChromeSetup.exe` |
 
-- **Vendor:** words joined without spaces, original case kept, at most 30 characters.
-- **Amount:** whole numbers without decimals; otherwise 2 decimals with a dot (`599.50INR`).
-- **Title:** lowercase words joined with hyphens.
-- **Screenshot date:** the file's creation date.
+- **Vendor:** words joined without spaces, original case kept, at most 30 characters. No vendor: the part is left out (`2026-10-20_599INR.jpg`).
+- **Amount:** whole numbers without decimals; otherwise 2 decimals with a dot (`599.50INR`), rounded half away from zero as the ledger stores it.
+- **Title:** lowercase words joined with hyphens. No title: the original name is kept (invalid characters removed).
+- **Screenshot date:** the file's creation date, in local time.
 - **Extension:** lowercase. `.jpeg` becomes `.jpg` only when SlothBox re-encodes; originals keep their extension.
 - **Allowed characters:** a fixed Windows-invalid set is removed: `< > : " / \ | ? *` and control characters. Do **not** use `Path.GetInvalidFileNameChars()`: it returns a different set on Linux CI.
 - **Reserved names:** `CON PRN AUX NUL COM1–COM9 LPT1–LPT9` get a trailing `_`. Trailing dots and spaces are removed.
-- **Length:** file name at most 80 characters. The title is trimmed so the full path stays under 240 characters.
-- **Clash:** add `-2`, `-3` and so on.
+- **Length:** file name at most 80 characters. The title is trimmed (at a hyphen where possible) so the full path stays under 240 characters.
+- **Clash:** add `-2`, `-3` and so on. A name whose `.slothbox-tmp` copy still exists counts as taken. Cuts never split a surrogate pair.
 
 ### 5.6 Embedding
 
@@ -745,9 +762,13 @@ The document and query prefixes match the EmbeddingGemma model card (verified 20
 - **Restart:** `processing` jobs from a crashed run return to `queued` on startup.
 - **Worker:** one worker. The GPU runs one Gemma call at a time.
 - **Pause:** Pause (tray or UI) stops the worker after the current job. Watchers keep adding jobs.
+- **Self-pause:** the worker pauses itself when the output drive is full (the user resumes from the banner) and when Gemma cannot be reached (the job goes back to `queued`; every 30 s the worker tries one job, and any answer but "offline" resumes it). `GET /status` and `status.changed` carry `pauseReason`: `user`, `drive_full`, `gemma_offline`, or null while the worker runs. A pause set by the user is lifted only by the user, and a full drive outranks an offline Gemma: the worker never lowers a pause.
+- **Startup:** the worker applies the migrations (retrying every 30 s while Postgres is down), waits for first-run setup, runs crash recovery (6.5), returns interrupted jobs to the queue, then starts claiming. While Postgres is down at runtime, nothing moves; the job it interrupted returns to the queue once it is back.
+- **Outcomes:** a job ends `done` (filed or a duplicate), `review`, `skipped` (the gate skipped it, or it was locked) or `failed` (the move failed; the file row stays and a retry reuses it). The worker publishes `file.filed`, `file.review`, `file.duplicate` and `queue.changed` as each job ends.
 - **Speed target:** under 10 s per file. This is an estimate; it is measured on day one with `SlothBox.Eval`.
 - **VRAM:** `gemma4:e4b` is 6.6 GB in the Ollama library (Oct 2026), so it gets the GPU to itself. `embeddinggemma` (622 MB) runs on the CPU (`num_gpu: 0`).
 - **Day-one rule:** if `ollama ps` shows less than 100% GPU for `gemma4:e4b`, or the median time per file is over 10 s, switch to `gemma4:e4b-it-qat` (6.1 GB), then `gemma4:e2b` (4.6 GB). Record the result here.
+- **Models (T0.10, 21 Oct 2026):** `ollama list`: `gemma4:e4b` (`dc35e8d9c606`, 6.6 GB) and `embeddinggemma:latest` (`85462619ee72`, 621 MB), both downloaded. `ollama ps`: empty, no model loaded yet.
 - **Day-one result:** not measured yet.
 
 ---
@@ -886,6 +907,11 @@ erDiagram
 - `completed_at` on `actions`.
 - `before` (`jsonb`) on `actions`: the file's status, type, category, title, review reason and receipt fields just before the action. Null for a file's first filing. Undo restores it (6.6).
 
+**When a file row counts**
+- The pipeline writes a file's row before its first filing, because the action refers to it.
+- The row counts as filed or in review only once that first filing's action is `done`. Search (6.3), receipts, the activity feed, the laziness meter (6.8) and the duplicate check (5.1) ignore rows without a done action.
+- A retry after a failed first filing reuses the unfinished row (same original path and hash) instead of adding another.
+
 **Constraints and indexes**
 - `categories`: unique (`type`, `name`). Receipt, screenshot and document each have one `Other` row with `is_system = true`. The `other` type has only the four fixed system rows Installers, Archives, Media and Misc (6.7). There are 19 seed categories, 7 system; system rows cannot be deleted.
 - `watched_folders.path`: unique (case-insensitive, normalised full path).
@@ -916,6 +942,7 @@ WITH kw AS (
         SELECT f.id, ts_rank_cd(f.search, q) AS rank
         FROM files f, websearch_to_tsquery('english', @query) AS q
         WHERE f.status = 'filed' AND f.search @@ q
+          AND EXISTS (SELECT 1 FROM actions a WHERE a.file_id = f.id AND a.status = 'done')
         ORDER BY rank DESC
         LIMIT 50
     ) k
@@ -926,6 +953,7 @@ vec AS (
         SELECT f.id, f.embedding <=> @query_vector AS dist
         FROM files f
         WHERE f.status = 'filed' AND f.embedding IS NOT NULL
+          AND EXISTS (SELECT 1 FROM actions a WHERE a.file_id = f.id AND a.status = 'done')
         ORDER BY f.embedding <=> @query_vector
         LIMIT 50
     ) v
@@ -950,10 +978,14 @@ The query runs in a transaction that first runs `SET LOCAL hnsw.ef_search = 100`
 
 ### 6.4 Safe move
 
-1. Insert the action as `pending` (from, to, sha256, kind).
-2. **Same drive:** `File.Move`. **Different drive:** copy to `<to>.slothbox-tmp`, check its hash, then rename to `<to>`.
-3. Delete the original. Skipped for `copy` actions (copy-only folders).
-4. Mark the action `done`. Update `files.current_path` and `files.status`.
+1. Insert the action as `pending` (from, to, sha256, kind, `before`). In the same transaction, the file row takes its new status, type, category, title, review reason and receipt fields.
+2. **Same drive:** `File.Move`. **Different drive, and every `copy` action:** copy to the action's own temp file, `<to>.<action id>.slothbox-tmp`, created exclusively while the original is held open against writers, check its hash, then rename to `<to>`. An existing `<to>` is never overwritten, and a temp file left by another action is left alone.
+3. Delete the original. Skipped for `copy` actions (copy-only folders). The original is checked again just before it goes: it must open exclusively and still have the recorded hash. If it cannot be deleted (another program has it open) or was written since the copy (its newer content stays), the verified copy is removed and the action fails: nothing has moved.
+4. Mark the action `done` and update `files.current_path`. A `failed` action puts back the file's `before` fields.
+
+- **One change per file at a time.** A request is refused, with nothing written, while the file has a `pending` action, when it does not start from the file's `current_path`, or when the file's fields no longer match the request's `before` (for example a second click on Undo). A `delete_copy` whose copy and original are the same path is refused before anything is logged.
+- **Once logged, a change runs to the end,** even if the request that started it is cancelled, so no file is left half-changed.
+- **Read-only files** move across drives as they do on one drive: SlothBox clears the attribute only on an original whose verified copy is in place, and on its own copies.
 
 **Rule: no log, no move.** If the action row cannot be written, nothing moves.
 
@@ -968,6 +1000,14 @@ On startup, each `pending` action is resolved:
 | Destination missing, or temp file or hash wrong | Remove partial files, mark `failed`, re-queue the job |
 | Original missing and destination missing | Mark `failed`, log an error, show it in the UI |
 
+- **Partial files** means only the action's own temp file, `<to>.<action id>.slothbox-tmp`. A file at `<to>` with the wrong hash is never deleted: it may be the user's.
+- **Original gone:** a temp file with the recorded hash is the only copy left, so it finishes the move and the action is `done`. A partial temp file is removed. If another file already sits at `<to>`, the temp file is kept and its path is shown in the error.
+- **Whose temp file:** each action's temp file carries its action id, so recovery touches only its own. Any other `.slothbox-tmp` file beside the destination belongs to a different action and is left alone.
+- **The original** is deleted only while it still has the recorded hash. An original edited since is kept.
+- **Re-queue** applies only to a first filing. An interrupted refile or undo is marked `failed`, and the file keeps its `before` fields.
+- **`delete_copy`:** a pending one is finished only if SlothBox's copy still has the recorded hash and the original is still in its folder, unchanged. Otherwise it fails and the copy is kept.
+- **Locked files:** the action stays `pending` until the next start.
+
 ### 6.6 Undo
 
 **What can be undone**
@@ -977,14 +1017,17 @@ On startup, each `pending` action is resolved:
 
 **How**
 - Undo reverses one action at a time, newest first. Undo on a file reverses that file's newest `done` action. "Undo last" reverses the newest action overall. "Undo since" reverses every action since the chosen time, newest first.
-1. Check that the file at `current_path` still has the recorded hash. If not, refuse and show the reason: "the file changed or moved after SlothBox filed it".
+1. Check that the action is still the file's newest live action (a stale list may still show one already reversed; reversing it again could delete the original) and that the file at `current_path` still has the recorded hash. If not, refuse and show the reason: "the file changed or moved after SlothBox filed it".
 2. Move it back to that action's `from_path` with the safe-move steps, as kind `undo_move`.
-3. If that path is now taken, restore as `name (restored).ext`.
+3. If that path is now taken, restore as `name (restored).ext`, then `name (restored 2).ext` and so on.
 4. Restore the file's fields from the action's `before` snapshot (6.2). Undoing a refile puts the file back where it was filed before, with its earlier status. Nothing is ignored.
-5. Only undoing a file's first filing (the file leaves SlothBox) adds its hash to `ignored_hashes` with reason `undone` and sets `files.status = undone`.
+5. Only undoing a file's first filing (the file leaves SlothBox) adds its hash to `ignored_hashes` with reason `undone` and sets `files.status = undone`. Both are written with the pending action, before the file reaches its source folder, so the watcher skips it; a failed undo removes them again.
+6. "Undo since" stops at a file's first refused action and leaves that file's older actions as they are. Other files carry on.
+7. A file open in another program is refused: "The file is open in another program. Close it and try again."
 
 **Copy-only folders**
 - Undoing the first filing deletes SlothBox's own copy (kind `delete_copy`), after checking its hash. Undoing a later refile is a normal `undo_move`.
+- If the original is missing or changed in its folder, the undo is refused and SlothBox keeps its copy: it may be the only copy of what was filed.
 - Apart from completing a verified move, this is the only delete SlothBox performs.
 
 **Fix from the UI**
@@ -1686,8 +1729,12 @@ Tray notifications appear only when a file goes to Needs review. Clicking one op
 - **Wrong type:** "Only images and PDFs can be sent."
 
 **Server rules** (Section 10)
-- Token check, size limit, magic-byte type check.
-- Files are saved under generated names.
+- Token check, size limit, magic-byte type check. Accepted: JPEG, PNG, WebP, GIF, HEIC/HEIF and PDF.
+- Files are saved under generated names (`phone-20261021-103012-a1b2c3.jpg`). Each is written as `.slothbox-tmp` and renamed when complete, then queued. If the queue is offline, the Inbox watcher picks the file up later.
+- Answers: 401 for a wrong token (the page route returns the old-link copy as HTML), 404 when the phone page is switched off, 413 too large, 415 wrong type, 503 before setup has chosen an output folder or when the page is not in the build.
+- Responses carry `Cache-Control: no-store` and `Referrer-Policy: no-referrer`, because the token is in the URL.
+- The page is one self-contained file: nothing else is served on 5081.
+- The page checks a file's size before sending it. The server still lets Kestrel read and discard up to 1 GB of a refused upload, so a 401 or 413 reaches the phone instead of a dropped connection.
 
 **iPhone**
 - Safari is expected to convert HEIC to JPEG on upload. Verify on a real iPhone.
@@ -1789,7 +1836,7 @@ src/SlothBox.Web/
 
 | Method | Path | Purpose |
 |---|---|---|
-| GET | `/status` | Gemma, models, database, queue counts, paused, setup complete, average seconds per file today |
+| GET | `/status` | Gemma, models, database, queue counts, paused and why (`pauseReason`: `user`, `drive_full`, `gemma_offline` or null), setup complete, average seconds per file today |
 | POST | `/pause`, `/resume` | Pause or resume the worker |
 | GET | `/activity?cursor=&limit=50` | Activity feed, newest first |
 | GET | `/stats/laziness?range=today\|week\|all` | Meter figures and the 7-day bars |
@@ -1875,7 +1922,7 @@ src/SlothBox.Web/
 
 | Failure | Behaviour |
 |---|---|
-| Docker or Ollama not running (common right after logon) | Pause the queue. Check every 30 s. Banner and tray status: "Gemma is offline, N files waiting". Nothing moves. |
+| Docker or Ollama not running (common right after logon) | Pause the queue (`pauseReason: gemma_offline`). Check every 30 s. Banner and tray status: "Gemma is offline, N files waiting". Nothing moves. |
 | A required model is missing | Same as above. The banner shows the `ollama pull` command. |
 | GPU out of memory, or another Ollama holds the GPU | Same as Ollama down. |
 | Postgres down | Stop processing (no log, no move). Files stay in place; the sweep picks them up once Postgres is back. |
@@ -1885,7 +1932,7 @@ src/SlothBox.Web/
 | Failure | Behaviour |
 |---|---|
 | File locked or still downloading | Retry for up to 10 min, then leave it for the next sweep. |
-| Output drive full | Copy fails, original untouched, action `failed`, queue paused, banner. |
+| Output drive full | Copy fails, original untouched, action `failed`, queue paused (`pauseReason: drive_full`), banner. |
 | Path too long | Name builder trims the title so the full path stays under 240 characters. |
 | Too many files at once (watcher overflow) | Run an immediate sweep. |
 | File deleted by the user before processing | Job ends `skipped`. |
@@ -1974,6 +2021,8 @@ src/SlothBox.Web/
 ```
 
 `OutputRoot` stays empty until first-run setup sets it.
+
+The file is read leniently: comments, trailing commas and any name case are accepted. A file without a phone token gets one added and saved. A file that cannot be read is reported on every read until it is fixed; it is never overwritten.
 
 The app adds the password from `SLOTHBOX_DB_PASSWORD` at startup. If the variable is missing, the Database check fails with "Set SLOTHBOX_DB_PASSWORD (see README setup)".
 

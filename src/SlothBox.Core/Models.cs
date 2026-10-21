@@ -22,6 +22,7 @@ public sealed record AnalysisRequest(string OriginalName, string FolderLabel, Fi
 public sealed record SourceFileInfo(string Path, string OriginalName, string Extension, DateTimeOffset CreatedAt,
     long SizeBytes, string OutputRoot);
 public sealed record Job(long Id, IncomingFile File, JobStatus Status, int Attempts, string? LastError, Guid? FileId);
+public sealed record QueueCounts(int Waiting, int Processing);
 public sealed record JobOutcome(JobStatus Status, Guid? FileId = null, string? Error = null);
 public sealed record FileRecord(Guid Id, string Sha256, FileOrigin Origin, int? WatchedFolderId, string OriginalName,
     string OriginalPath, string CurrentPath, FileKind Type, int? CategoryId, string Title, string Caption,
@@ -65,5 +66,13 @@ public abstract record AnalysisResult
     public sealed record NeedsReview(ReviewReason Reason, Analysis? PartialAnalysis = null) : AnalysisResult;
 }
 
-public sealed record MoveResult(bool Succeeded, long? ActionId, string? Destination, string? Error);
+// One logged file change (spec 6.4). Before is the file's state just before it (null for a first filing);
+// After, when set, is the state the file takes with it.
+public sealed record MoveRequest(Guid FileId, ActionKind Kind, string From, string To, string Sha256,
+    FileSnapshot? Before = null, FileSnapshot? After = null);
+// Why a change did not happen. The worker pauses itself on DriveFull (spec 9).
+public enum MoveFailure { ChangedMeanwhile, Invalid, DestinationTaken, HashMismatch, OriginalKept, DriveFull, IoError }
+public sealed record MoveResult(bool Succeeded, long? ActionId, string? Destination, string? Error,
+    MoveFailure? Failure = null);
+public sealed record RecoveredAction(long ActionId, Guid FileId, ActionStatus Status, string? Error, bool Requeued);
 public sealed record UndoResult(Guid FileId, bool Succeeded, string? RestoredPath, string? Error);
