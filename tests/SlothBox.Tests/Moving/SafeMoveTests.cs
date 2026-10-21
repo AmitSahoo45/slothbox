@@ -260,6 +260,26 @@ public sealed class SafeMoveTests(PostgresFixture postgres)
     }
 
     [Fact]
+    public async Task A_temp_copy_left_by_an_earlier_move_is_never_overwritten()
+    {
+        await using var h = await MoveHarness.CreateAsync(postgres);
+        var source = h.Watched("IMG_2041.jpg", "receipt photo");
+        var file = await h.AddFileAsync(source);
+        var target = h.Output("Receipts", "Food", "2026-10-20_Cafe_120INR.jpg");
+        var earlier = h.WriteOutput("an earlier, unrelated copy", "Receipts", "Food",
+            "2026-10-20_Cafe_120INR.jpg.slothbox-tmp");
+
+        var result = await h.Mover(sameVolume: false)
+            .MoveAsync(new MoveRequest(file.Id, ActionKind.Move, source, target, file.Sha256), Ct);
+
+        result.Succeeded.ShouldBeFalse();
+        result.Error.ShouldNotBeNull().ShouldContain(earlier);
+        File.ReadAllText(earlier).ShouldBe("an earlier, unrelated copy");
+        File.ReadAllText(source).ShouldBe("receipt photo");
+        File.Exists(target).ShouldBeFalse();
+    }
+
+    [Fact]
     public async Task Deleting_a_copy_removes_it_and_points_the_file_back_at_the_original()
     {
         await using var h = await MoveHarness.CreateAsync(postgres);

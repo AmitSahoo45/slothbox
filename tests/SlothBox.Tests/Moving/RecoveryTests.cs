@@ -91,7 +91,7 @@ public sealed class RecoveryTests(PostgresFixture postgres)
         var crash = await CrashedAsync(h);
         var temp = h.WriteOutput("receipt by", "Receipts", "Food", Path.GetFileName(crash.Target) + ".slothbox-tmp");
 
-        var recovered = (await h.Mover().RecoverPendingAsync(Ct)).ShouldHaveSingleItem();
+        var recovered = (await h.Mover(sameVolume: false).RecoverPendingAsync(Ct)).ShouldHaveSingleItem();
 
         (recovered.Status, recovered.Requeued).ShouldBe((ActionStatus.Failed, true));
         File.Exists(temp).ShouldBeFalse();
@@ -159,16 +159,63 @@ public sealed class RecoveryTests(PostgresFixture postgres)
     }
 
     [Fact]
-    public async Task With_both_files_missing_a_temp_copy_is_kept_because_it_may_be_the_only_one()
+    public async Task With_the_original_gone_a_complete_temp_copy_finishes_the_move()
     {
         await using var h = await MoveHarness.CreateAsync(postgres);
         var crash = await CrashedAsync(h);
         var temp = h.WriteOutput(Content, "Receipts", "Food", Path.GetFileName(crash.Target) + ".slothbox-tmp");
         File.Delete(crash.Source);
 
-        (await h.Mover().RecoverPendingAsync(Ct)).ShouldHaveSingleItem().Status.ShouldBe(ActionStatus.Failed);
+        (await h.Mover(sameVolume: false).RecoverPendingAsync(Ct)).ShouldHaveSingleItem().Status.ShouldBe(ActionStatus.Done);
 
+        File.Exists(temp).ShouldBeFalse();
+        File.ReadAllText(crash.Target).ShouldBe(Content);
+        (await h.FileAsync(crash.File.Id)).CurrentPath.ShouldBe(crash.Target);
+    }
+
+    [Fact]
+    public async Task With_the_original_gone_a_partial_temp_copy_is_removed()
+    {
+        await using var h = await MoveHarness.CreateAsync(postgres);
+        var crash = await CrashedAsync(h);
+        var temp = h.WriteOutput("receipt by", "Receipts", "Food", Path.GetFileName(crash.Target) + ".slothbox-tmp");
+        File.Delete(crash.Source);
+
+        var recovered = (await h.Mover(sameVolume: false).RecoverPendingAsync(Ct)).ShouldHaveSingleItem();
+
+        (recovered.Status, recovered.Requeued).ShouldBe((ActionStatus.Failed, false));
+        File.Exists(temp).ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task A_complete_temp_copy_blocked_by_another_file_is_kept_and_named_in_the_error()
+    {
+        await using var h = await MoveHarness.CreateAsync(postgres);
+        var crash = await CrashedAsync(h);
+        var temp = h.WriteOutput(Content, "Receipts", "Food", Path.GetFileName(crash.Target) + ".slothbox-tmp");
+        h.WriteOutput("a file the user saved here", "Receipts", "Food", Path.GetFileName(crash.Target));
+        File.Delete(crash.Source);
+
+        var recovered = (await h.Mover(sameVolume: false).RecoverPendingAsync(Ct)).ShouldHaveSingleItem();
+
+        recovered.Status.ShouldBe(ActionStatus.Failed);
+        recovered.Error.ShouldNotBeNull().ShouldContain(temp);
         File.ReadAllText(temp).ShouldBe(Content);
+        File.ReadAllText(crash.Target).ShouldBe("a file the user saved here");
+    }
+
+    [Fact]
+    public async Task A_move_on_one_drive_leaves_alone_a_temp_file_it_could_not_have_written()
+    {
+        await using var h = await MoveHarness.CreateAsync(postgres);
+        var crash = await CrashedAsync(h);
+        var foreign = h.WriteOutput("another file's only copy", "Receipts", "Food",
+            Path.GetFileName(crash.Target) + ".slothbox-tmp");
+
+        (await h.Mover(sameVolume: true).RecoverPendingAsync(Ct)).ShouldHaveSingleItem()
+            .Status.ShouldBe(ActionStatus.Failed);
+
+        File.ReadAllText(foreign).ShouldBe("another file's only copy");
     }
 
     [Fact]

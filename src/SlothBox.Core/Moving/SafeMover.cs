@@ -7,7 +7,6 @@ public sealed class SafeMover(
     IJobQueue jobs,
     Func<string, string, bool>? sameVolume = null) : ISafeMover
 {
-    private const string TempSuffix = ".slothbox-tmp";
     private const string ChangedMeanwhile = "This file changed while SlothBox was working on it. Try again.";
     private const string OriginalMissing =
         "The original is missing or changed in its folder, so SlothBox kept its copy.";
@@ -62,10 +61,13 @@ public sealed class SafeMover(
         }
 
         // Copies, and moves between drives, go through a temp file that must match the recorded hash.
-        var temp = request.To + TempSuffix;
+        // A temp file that is already there belongs to another move and may be the only copy of its file.
+        var temp = request.To + TempFiles.Suffix;
+        if (File.Exists(temp))
+            return $"An earlier copy is still at {temp}.";
         try
         {
-            File.Copy(request.From, temp, overwrite: true);
+            File.Copy(request.From, temp);
             if (await FileHash.Sha256Async(temp, FileShare.Read, ct) != request.Sha256)
             {
                 DeleteFile(temp);
@@ -124,10 +126,13 @@ public sealed class SafeMover(
                 return await ResolveAsync(action,
                     await DeleteCopyAsync(action.FromPath, action.ToPath, action.Sha256, ct), requeue: false, ct);
 
-            var temp = action.ToPath + TempSuffix;
+            var temp = action.ToPath + TempFiles.Suffix;
+            // Only a copy, or a move between drives, writes a temp file; any other belongs to a different move.
+            var ownTemp = action.Kind == ActionKind.Copy || !_sameVolume(action.FromPath, action.ToPath);
             if (await HasHashAsync(action.ToPath, action.Sha256, ct))
             {
-                TryDelete(temp);
+                if (ownTemp)
+                    TryDelete(temp);
                 // The move had finished. An original edited since it was hashed is not SlothBox's to delete.
                 if (action.Kind != ActionKind.Copy && await HasHashAsync(action.FromPath, action.Sha256, ct))
                     DeleteFile(action.FromPath);
@@ -136,10 +141,25 @@ public sealed class SafeMover(
             if (File.Exists(action.FromPath))
             {
                 // Only SlothBox's partial copy is removed; a file at the destination may belong to the user.
-                TryDelete(temp);
+                if (ownTemp)
+                    TryDelete(temp);
                 var firstFiling = action.Before is null && action.Kind is ActionKind.Move or ActionKind.Copy;
                 return await ResolveAsync(action, "The move was interrupted before it finished.", firstFiling, ct);
             }
+            // The original is gone, so a complete temp copy is the only copy left: it finishes the move.
+            if (!ownTemp)
+                return await ResolveAsync(action, "Both the original and the destination are missing.",
+                    requeue: false, ct);
+            if (await HasHashAsync(temp, action.Sha256, ct))
+            {
+                if (File.Exists(action.ToPath))
+                    return await ResolveAsync(action,
+                        $"The original is missing and another file is at the destination. SlothBox's copy is at {temp}.",
+                        requeue: false, ct);
+                File.Move(temp, action.ToPath);
+                return await ResolveAsync(action, null, requeue: false, ct);
+            }
+            TryDelete(temp);
             return await ResolveAsync(action, "Both the original and the destination are missing.",
                 requeue: false, ct);
         }

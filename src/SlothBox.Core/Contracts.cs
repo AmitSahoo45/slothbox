@@ -38,8 +38,12 @@ public interface IFileAnalyzer
 
 public interface INameBuilder
 {
-    string BuildFileName(Analysis analysis, SourceFileInfo info);
-    string BuildTargetFolder(FileKind kind, string categoryFolder);
+    // <outputRoot>\Receipts|Screenshots|Documents|Other\<categoryFolder>
+    string BuildTargetFolder(string outputRoot, FileKind kind, string categoryFolder);
+    // The name from spec 5.5; targetFolder is needed to keep the whole path under the length limit.
+    string BuildFileName(Analysis analysis, SourceFileInfo info, string targetFolder);
+    // fileName, or fileName with -2, -3 and so on before the extension while that name is taken.
+    string ResolveClash(string targetFolder, string fileName, Func<string, bool> isTaken);
 }
 
 public interface ISafeMover
@@ -150,6 +154,12 @@ public interface IWatchedFolderRepository
     Task<bool> IsInBaselineAsync(int folderId, string path, CancellationToken ct);
     Task SetBaselineAsync(int folderId, IReadOnlyList<string> paths, CancellationToken ct);
     Task ClearBaselineAsync(int folderId, CancellationToken ct);
+}
+
+// %LOCALAPPDATA%\SlothBox\settings.json (spec 11), created with defaults and a new phone token on first use.
+public interface ISettingsStore
+{
+    SlothBoxSettings Current { get; }
 }
 
 public interface IAppState

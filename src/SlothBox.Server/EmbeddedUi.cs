@@ -4,15 +4,20 @@ namespace SlothBox.Server;
 
 internal static class EmbeddedUi
 {
-    internal static void Map(WebApplication app)
+    // The built UI under wwwroot, or no files when the UI has not been built.
+    internal static IFileProvider Files()
     {
         var assembly = typeof(ServerHost).Assembly;
-        if (assembly.GetManifestResourceInfo("Microsoft.Extensions.FileProviders.Embedded.Manifest.xml") is null)
+        return assembly.GetManifestResourceInfo("Microsoft.Extensions.FileProviders.Embedded.Manifest.xml") is null
+            ? new NullFileProvider()
+            : new ManifestEmbeddedFileProvider(assembly, "wwwroot");
+    }
+
+    internal static void Map(WebApplication app)
+    {
+        var files = Files();
+        if (!files.GetFileInfo("index.html").Exists)
             return;
-        var manifest = new ManifestEmbeddedFileProvider(assembly);
-        if (!manifest.GetFileInfo("wwwroot/index.html").Exists)
-            return;
-        var files = new ManifestEmbeddedFileProvider(assembly, "wwwroot");
         app.UseDefaultFiles(new DefaultFilesOptions { FileProvider = files });
         app.UseStaticFiles(new StaticFileOptions { FileProvider = files });
         app.MapFallback(async context =>

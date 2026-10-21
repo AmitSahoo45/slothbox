@@ -355,6 +355,10 @@ Inputs are a list the user manages on the Folders page (Section 7.4.6).
 | A cloud-synced folder (under the `OneDrive`, `OneDriveConsumer` or `OneDriveCommercial` paths, or containing a `Google Drive` or `Dropbox` segment) | Allowed, mode forced to Copy only: moving a file out would delete it from the cloud |
 | Missing or no access | Refused, with the reason |
 
+- **Order:** device paths (`\\?\`, `\\.\`), network, relative paths, drive root, system folder, output folder, watched folders, missing or no access, then cloud. A network path is judged before anything touches it. Device and relative paths (including a bare `D:`) are refused with "Use a full folder path, like D:\Scans."
+- **"Inside"** compares whole folder names, without regard to case: `Windows Backups` is not inside `Windows`. A folder that only contains a system or output folder is not refused, because watchers do not look into subfolders.
+- **Cloud:** `Dropbox (Work)` and similar team folders count as Dropbox. Google Drive for desktop's `My Drive` and `Shared drives` folders count as Google Drive.
+
 **Existing files (D25)**
 - When a folder is added, SlothBox records every file path already in it as the folder's baseline (A17).
 - The sweep and the watcher skip baseline paths for good, even if those files are later edited.
@@ -418,7 +422,7 @@ Inputs are a list the user manages on the Folders page (Section 7.4.6).
 | Ollama client | OllamaSharp | MIT |
 | Postgres | Npgsql.EntityFrameworkCore.PostgreSQL | PostgreSQL |
 | Vectors | Pgvector.EntityFrameworkCore | MIT |
-| PDF text | UglyToad.PdfPig | Apache 2.0 |
+| PDF text | PdfPig (namespace `UglyToad.PdfPig`) | Apache 2.0 |
 | DOCX text | DocumentFormat.OpenXml | MIT |
 | Images (decode, EXIF orientation, resize) | SkiaSharp (+ `SkiaSharp.NativeAssets.Linux` in the test project for CI) | MIT |
 | QR code | QRCoder | MIT |
@@ -483,11 +487,12 @@ public interface IFileAnalyzer
     Task<AnalysisResult> AnalyzeAsync(AnalysisRequest request, CancellationToken ct);
 }
 
-// Step 5: naming. Pure function, no I/O.
+// Step 5: naming. Pure functions, no I/O: the clash check is passed in.
 public interface INameBuilder
 {
-    string BuildFileName(Analysis analysis, SourceFileInfo info);
-    string BuildTargetFolder(FileKind kind, string categoryFolder);
+    string BuildTargetFolder(string outputRoot, FileKind kind, string categoryFolder);
+    string BuildFileName(Analysis analysis, SourceFileInfo info, string targetFolder); // folder sets the length budget
+    string ResolveClash(string targetFolder, string fileName, Func<string, bool> isTaken); // -2, -3, ...
 }
 
 // Step 5 and undo: every file change (move, copy, undo_move, delete_copy) as a logged action (6.4).
@@ -586,7 +591,7 @@ flowchart TD
 |---|---|---|
 | 1. Detect | A watcher event (Created, Renamed), the 5-min sweep, or a phone upload creates a job. | One queued or processing job per path; a duplicate enqueue is ignored. |
 | 2. Wait and check | Waits until size and last-write time are unchanged for 3 s **and** the file opens with `FileShare.None`. A file last written 3 s or more ago already counts as unchanged, so existing files are not made to wait again. Then computes SHA-256. | **Skip:** temp, hidden and system files (5.3); paths in the folder's baseline; hashes in `ignored_hashes`. **Duplicate:** same hash already filed or in Needs review (a filing that never finished does not count) → `Duplicates`. **Locked:** retried for up to 10 min, then left for the next sweep. |
-| 3. Read content | **Images:** decoded with SkiaSharp, rotated by EXIF orientation, resized so the long edge is at most 1,600 px, encoded as JPEG quality 85. **PDF:** text via PdfPig. **DOCX:** text via OpenXml. **TXT, MD, CSV:** read as UTF-8. **Office files not parsed in v1** (XLSX, PPTX): name only. **Installers, archives, media:** name only. | Text sent to Gemma: first 6,000 characters. Text stored for keyword search: first 20,000 characters. A PDF with under 50 characters of text in its first 3 pages counts as scanned → Needs review. Password-protected PDF or DOCX → Needs review. HEIC → Needs review. |
+| 3. Read content | **Images:** decoded with SkiaSharp, rotated by EXIF orientation, resized so the long edge is at most 1,600 px, encoded as JPEG quality 85. **PDF:** text via PdfPig. **DOCX:** text via OpenXml. **TXT, MD, CSV:** read as UTF-8. **Office files not parsed in v1** (XLSX, PPTX): name only. **Installers, archives, media:** name only. | Text sent to Gemma: first 6,000 characters. Text stored for keyword search: first 20,000 characters. A PDF with under 50 characters of text (spaces not counted) in its first 3 pages counts as scanned → Needs review. Password-protected PDF or DOCX → Needs review (a protected `.docx` is an OLE compound file, not a zip). HEIC → Needs review. A file that does not parse as its extension says is read by name only. Images with transparency are flattened onto white. Images are decoded at a reduced scale where the format allows; one still over 50 megapixels is read by name only. DOCX text is streamed and stops at the stored limit. Stored text drops NUL and other control characters (tab, CR and LF stay) and never ends in half a surrogate pair, so Postgres can always store it. |
 | 4. Ask Gemma | One call: content, the full category list with descriptions, the folder label as a hint, and the original file name. Ollama's JSON-schema `format` forces the output shape. | Timeout 120 s, one retry. Name-only files of type `other` skip this step. |
 | 5. Name and move | Validate (5.2), build the name (5.5), choose the folder, then safe move (6.4). | Copy-only folders: the file is copied, never moved. |
 | 6. Index | Embed (5.6), write the vector, update the keyword index, push an SSE event to the UI (Section 8.3). | Tray notification only for Needs review. |
@@ -599,8 +604,11 @@ A file goes to **Needs review** when any of these is true:
 3. `type` is `receipt` and `amount` or `date` is null.
 4. Reading failed in step 3 (HEIC, scanned PDF, password-protected file).
 
+A receipt missing both date and amount gets `missing_date`.
+
 **Corrections applied without sending the file to review**
-- `category` not in the user's list for that type → `"Other"`.
+- `category` not in the user's list for that type → `"Other"`. Names match without regard to case and take the list's spelling.
+- `receipt` fields on any other type are dropped.
 - `currency` null on a receipt that has an amount → `INR`, configurable (A10).
 - `payment_method` null → `unknown`.
 
@@ -719,15 +727,15 @@ Gemma never writes the file name. It returns fields, and `INameBuilder` builds t
 | Document | `{title}` | `dotnet-10-release-notes.pdf` |
 | Other | original name, unchanged | `ChromeSetup.exe` |
 
-- **Vendor:** words joined without spaces, original case kept, at most 30 characters.
-- **Amount:** whole numbers without decimals; otherwise 2 decimals with a dot (`599.50INR`).
-- **Title:** lowercase words joined with hyphens.
-- **Screenshot date:** the file's creation date.
+- **Vendor:** words joined without spaces, original case kept, at most 30 characters. No vendor: the part is left out (`2026-10-20_599INR.jpg`).
+- **Amount:** whole numbers without decimals; otherwise 2 decimals with a dot (`599.50INR`), rounded half away from zero as the ledger stores it.
+- **Title:** lowercase words joined with hyphens. No title: the original name is kept (invalid characters removed).
+- **Screenshot date:** the file's creation date, in local time.
 - **Extension:** lowercase. `.jpeg` becomes `.jpg` only when SlothBox re-encodes; originals keep their extension.
 - **Allowed characters:** a fixed Windows-invalid set is removed: `< > : " / \ | ? *` and control characters. Do **not** use `Path.GetInvalidFileNameChars()`: it returns a different set on Linux CI.
 - **Reserved names:** `CON PRN AUX NUL COM1–COM9 LPT1–LPT9` get a trailing `_`. Trailing dots and spaces are removed.
-- **Length:** file name at most 80 characters. The title is trimmed so the full path stays under 240 characters.
-- **Clash:** add `-2`, `-3` and so on.
+- **Length:** file name at most 80 characters. The title is trimmed (at a hyphen where possible) so the full path stays under 240 characters.
+- **Clash:** add `-2`, `-3` and so on. A name whose `.slothbox-tmp` copy still exists counts as taken. Cuts never split a surrogate pair.
 
 ### 5.6 Embedding
 
@@ -960,7 +968,7 @@ The query runs in a transaction that first runs `SET LOCAL hnsw.ef_search = 100`
 ### 6.4 Safe move
 
 1. Insert the action as `pending` (from, to, sha256, kind, `before`). In the same transaction, the file row takes its new status, type, category, title, review reason and receipt fields.
-2. **Same drive:** `File.Move`. **Different drive, and every `copy` action:** copy to `<to>.slothbox-tmp`, check its hash, then rename to `<to>`. An existing `<to>` is never overwritten.
+2. **Same drive:** `File.Move`. **Different drive, and every `copy` action:** copy to `<to>.slothbox-tmp`, check its hash, then rename to `<to>`. Neither an existing `<to>` nor an existing temp file is overwritten.
 3. Delete the original. Skipped for `copy` actions (copy-only folders). If the original cannot be deleted (another program has it open), the verified copy is removed and the action fails: nothing has moved.
 4. Mark the action `done` and update `files.current_path`. A `failed` action puts back the file's `before` fields.
 
@@ -981,7 +989,9 @@ On startup, each `pending` action is resolved:
 | Destination missing, or temp file or hash wrong | Remove partial files, mark `failed`, re-queue the job |
 | Original missing and destination missing | Mark `failed`, log an error, show it in the UI |
 
-- **Partial files** means only SlothBox's `<to>.slothbox-tmp`. A file at `<to>` with the wrong hash is never deleted: it may be the user's. With both files missing, a temp file is kept: it may be the only copy.
+- **Partial files** means only SlothBox's `<to>.slothbox-tmp`. A file at `<to>` with the wrong hash is never deleted: it may be the user's.
+- **Original gone:** a temp file with the recorded hash is the only copy left, so it finishes the move and the action is `done`. A partial temp file is removed. If another file already sits at `<to>`, the temp file is kept and its path is shown in the error.
+- **Whose temp file:** recovery touches `<to>.slothbox-tmp` only when the action could have written it (a `copy`, or a move between drives). Any other temp file belongs to a different move and is left alone.
 - **The original** is deleted only while it still has the recorded hash. An original edited since is kept.
 - **Re-queue** applies only to a first filing. An interrupted refile or undo is marked `failed`, and the file keeps its `before` fields.
 - **`delete_copy`:** a pending one is finished only if SlothBox's copy still has the recorded hash and the original is still in its folder, unchanged. Otherwise it fails and the copy is kept.
@@ -1662,8 +1672,12 @@ Tray notifications appear only when a file goes to Needs review. Clicking one op
 - **Wrong type:** "Only images and PDFs can be sent."
 
 **Server rules** (Section 10)
-- Token check, size limit, magic-byte type check.
-- Files are saved under generated names.
+- Token check, size limit, magic-byte type check. Accepted: JPEG, PNG, WebP, GIF, HEIC/HEIF and PDF.
+- Files are saved under generated names (`phone-20261021-103012-a1b2c3.jpg`). Each is written as `.slothbox-tmp` and renamed when complete, then queued. If the queue is offline, the Inbox watcher picks the file up later.
+- Answers: 401 for a wrong token (the page route returns the old-link copy as HTML), 404 when the phone page is switched off, 413 too large, 415 wrong type, 503 before setup has chosen an output folder or when the page is not in the build.
+- Responses carry `Cache-Control: no-store` and `Referrer-Policy: no-referrer`, because the token is in the URL.
+- The page is one self-contained file: nothing else is served on 5081.
+- The page checks a file's size before sending it. The server still lets Kestrel read and discard up to 1 GB of a refused upload, so a 401 or 413 reaches the phone instead of a dropped connection.
 
 **iPhone**
 - Safari is expected to convert HEIC to JPEG on upload. Verify on a real iPhone.
@@ -1926,6 +1940,8 @@ src/SlothBox.Web/
 ```
 
 `OutputRoot` stays empty until first-run setup sets it.
+
+The file is read leniently: comments, trailing commas and any name case are accepted. A file without a phone token gets one added and saved. A file that cannot be read is reported on every read until it is fixed; it is never overwritten.
 
 The app adds the password from `SLOTHBOX_DB_PASSWORD` at startup. If the variable is missing, the Database check fails with "Set SLOTHBOX_DB_PASSWORD (see README setup)".
 

@@ -1,8 +1,15 @@
 using System.Net;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi;
+using Pgvector.EntityFrameworkCore;
+using SlothBox.Core;
+using SlothBox.Data;
+using SlothBox.Data.Queue;
 using SlothBox.Server.Api;
+using SlothBox.Server.Phone;
+using SlothBox.Server.Settings;
 
 namespace SlothBox.Server;
 
@@ -21,6 +28,13 @@ public static class ServerHost
             options.ListenAnyIP(5081);
         });
         builder.Logging.AddFilter("Microsoft.AspNetCore", LogLevel.Warning);
+        builder.Services.AddSingleton<ISettingsStore>(_ => new SettingsFile(SettingsFile.DefaultPath));
+        builder.Services.AddDbContextFactory<SlothBoxDbContext>((services, options) => options.UseNpgsql(
+            DatabaseConnection.For(services.GetRequiredService<ISettingsStore>().Current,
+                Environment.GetEnvironmentVariable(DatabaseConnection.PasswordVariable)),
+            npgsql => npgsql.UseVector()));
+        builder.Services.AddSingleton<IJobQueue, JobQueue>();
+        builder.Services.AddSingleton(new PhonePage(EmbeddedUi.Files()));
         builder.Services.AddProblemDetails();
         builder.Services.ConfigureHttpJsonOptions(options =>
             options.SerializerOptions.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.SnakeCaseLower)));
@@ -51,6 +65,7 @@ public static class ServerHost
         app.UseStatusCodePages();
         app.MapOpenApi();
         StubEndpoints.Map(app);
+        PhoneEndpoints.Map(app);
         EmbeddedUi.Map(app);
         return app;
     }

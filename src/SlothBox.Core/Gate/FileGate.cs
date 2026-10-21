@@ -10,7 +10,7 @@ public sealed class FileGate(
 {
     private static readonly HashSet<string> TemporaryExtensions = new(StringComparer.OrdinalIgnoreCase)
     {
-        ".crdownload", ".part", ".partial", ".tmp", ".download", ".slothbox-tmp"
+        ".crdownload", ".part", ".partial", ".tmp", ".download", TempFiles.Suffix
     };
 
     private static readonly HashSet<string> ShellFiles = new(StringComparer.OrdinalIgnoreCase)
