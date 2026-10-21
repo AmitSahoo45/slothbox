@@ -1500,8 +1500,7 @@ arrive between the check and save or removal.
 | AI | Ollama address, both models with status, [Check again]; [Rebuild missing search data] |
 | Laziness meter | Seconds per receipt, screenshot, document, other |
 | Ignored files | Undone files SlothBox will not refile: name, when undone, [Allow again] |
-| Logs | [Open logs folder] |
-| About | Version, repo link |
+| About | Repo link |
 
 **Track U integration:** theme changes apply immediately and stay in the
 browser. Startup, Ollama address and laziness estimates use an explicit Save
@@ -1510,9 +1509,9 @@ use the latest loaded settings when the full PUT is sent. Durations accept
 nonnegative whole seconds within the contract's int32 range. Check again uses
 the saved Ollama address; rebuild reports queued work, not completion.
 
-Open logs folder and the app version remain deferred: the fixed contract has
-no operation for opening logs and no app-version metadata. The About repository
-link uses the project named in this spec. No placeholder version is displayed.
+Open logs folder and the app version are dropped from scope because the
+contract has no operation for opening logs and no app-version metadata. The
+About repository link uses the project named in this spec.
 
 #### 7.4.9 File drawer (`?file=<id>`)
 
