@@ -611,6 +611,9 @@ A receipt missing both date and amount gets `missing_date`.
 - `receipt` fields on any other type are dropped.
 - `currency` null on a receipt that has an amount → `INR`, configurable (A10).
 - `payment_method` null → `unknown`.
+- `currency` that is not a 3-letter code → null, then the rule above (the ledger column is `char(3)`).
+- `amount` of 10,000,000,000 or more → null, so the receipt gets `missing_amount` (the ledger column is `numeric(12,2)`).
+- Control characters in Gemma's strings are removed, so Postgres can store them.
 
 **Stored reason codes** (shown in the UI with the copy in Section 7.6)
 `bad_output`, `unknown_type`, `missing_date`, `missing_amount`, `heic`, `scanned_pdf`, `password_protected`
@@ -694,6 +697,10 @@ Content: {extracted text, or the attached image}
 
 If Ollama rejects nullable types (`["string", "null"]`) when converting the schema, use empty strings and `0` instead of null, and map them back to null in code. Verify this on the first call.
 
+**Nullable support (verified 21 Oct 2026, E7):** Ollama 0.40.2 with `gemma4:e4b` accepts this schema, nullable types included, and the reply matched it, so the fallback schema is not used. The parser still reads `""` and `0` in receipt fields as null, so either schema works.
+
+**Category copy:** on that call Gemma returned the whole list entry (`Groceries — Supermarket and grocery bills`) as `category`. The parser maps such an entry back to the listed name, so it still matches the list (5.2); a name that itself contains ` — ` is kept whole.
+
 **Example output**
 
 ```json
@@ -758,6 +765,7 @@ The document and query prefixes match the EmbeddingGemma model card (verified 20
 - **Speed target:** under 10 s per file. This is an estimate; it is measured on day one with `SlothBox.Eval`.
 - **VRAM:** `gemma4:e4b` is 6.6 GB in the Ollama library (Oct 2026), so it gets the GPU to itself. `embeddinggemma` (622 MB) runs on the CPU (`num_gpu: 0`).
 - **Day-one rule:** if `ollama ps` shows less than 100% GPU for `gemma4:e4b`, or the median time per file is over 10 s, switch to `gemma4:e4b-it-qat` (6.1 GB), then `gemma4:e2b` (4.6 GB). Record the result here.
+- **Models (T0.10, 21 Oct 2026):** `ollama list`: `gemma4:e4b` (`dc35e8d9c606`, 6.6 GB) and `embeddinggemma:latest` (`85462619ee72`, 621 MB), both downloaded. `ollama ps`: empty, no model loaded yet.
 - **Day-one result:** not measured yet.
 
 ---
