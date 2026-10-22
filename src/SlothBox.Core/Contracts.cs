@@ -32,8 +32,9 @@ public interface IContentReader
 }
 
 // Step 4: Gemma. Implemented in Ai. A connection failure (Ollama or Docker not running) surfaces as
-// HttpRequestException: the pipeline reads it as "Gemma offline" and the job waits (spec 9). A timeout after the
-// retry, or output that cannot be used, comes back as NeedsReview(BadOutput). No stray OperationCanceledException.
+// HttpRequestException with no status code: the pipeline reads it as "Gemma offline" and the job waits (spec 9).
+// An error status from Ollama, a timeout after the retry, or output that cannot be used comes back as
+// NeedsReview(BadOutput), so one file cannot hold the queue. No stray OperationCanceledException.
 public interface IFileAnalyzer
 {
     Task<AnalysisResult> AnalyzeAsync(AnalysisRequest request, CancellationToken ct);

@@ -882,6 +882,8 @@ export interface components {
             message: null | string;
         };
         /** @enum {unknown} */
+        PauseReason: "user" | "drive_full" | "gemma_offline" | null;
+        /** @enum {unknown} */
         PaymentMethod: "upi" | "card" | "cash" | "netbanking" | "unknown";
         PhoneDto: {
             enabled: boolean;
@@ -1016,6 +1018,8 @@ export interface components {
             setupComplete: boolean;
             /** Format: double */
             averageSecondsPerFileToday: null | number | string;
+            /** @enum {unknown} */
+            pauseReason?: "user" | "drive_full" | "gemma_offline" | null;
         };
         StatusDto: {
             gemma: components["schemas"]["ServiceStatusDto"];
@@ -1027,6 +1031,7 @@ export interface components {
             setupComplete: boolean;
             /** Format: double */
             averageSecondsPerFileToday: null | number | string;
+            pauseReason?: null | components["schemas"]["PauseReason"];
         };
         TidyResultDto: {
             /** Format: int32 */
@@ -1114,8 +1119,24 @@ export interface operations {
                     "text/html": string;
                 };
             };
-            /** @description Not Implemented */
-            501: {
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/html": string;
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Service Unavailable */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1149,8 +1170,51 @@ export interface operations {
                     "application/json": components["schemas"]["PhoneUploadResultDto"];
                 };
             };
-            /** @description Not Implemented */
-            501: {
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Payload Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Unsupported Media Type */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

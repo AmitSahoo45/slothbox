@@ -720,6 +720,8 @@ If Ollama rejects nullable types (`["string", "null"]`) when converting the sche
 - `num_ctx` 8192 to start, the same value on every call (a changing value reloads the model)
 - `keep_alive` 30 min
 - Timeout 120 s per attempt, one retry. The HTTP client timeout is set above 120 s, so the per-attempt timeout decides.
+- An error status from Ollama is treated like unusable output: one retry, then Needs review (`bad_output`). Only a failed connection means Gemma is offline (Section 9).
+- `payment_method` is matched without regard to case (`UPI` is `upi`).
 - Temperature 0
 - `format` is sent as a JSON object (for example a `JsonNode`), never as a string. Ollama rejects a schema sent as a string.
 
@@ -1924,8 +1926,8 @@ src/SlothBox.Web/
 | Failure | Behaviour |
 |---|---|
 | Docker or Ollama not running (common right after logon) | Pause the queue (`pauseReason: gemma_offline`). Check every 30 s. Banner and tray status: "Gemma is offline, N files waiting". Nothing moves. |
-| A required model is missing | Same as above. The banner shows the `ollama pull` command. |
-| GPU out of memory, or another Ollama holds the GPU | Same as Ollama down. |
+| A required model is missing | The startup check (4.3 step 7) keeps the queue paused, and the banner shows the `ollama pull` command. A file that reaches Gemma anyway gets Ollama's error status: one retry, then Needs review (`bad_output`). |
+| GPU out of memory, or another Ollama holds the GPU | Ollama answers with an error status: one retry, then Needs review (`bad_output`). Only a failed connection pauses the queue, so one file Ollama cannot handle never holds it. |
 | Postgres down | Stop processing (no log, no move). Files stay in place; the sweep picks them up once Postgres is back. |
 
 **Files and folders**
@@ -1944,7 +1946,7 @@ src/SlothBox.Web/
 
 | Failure | Behaviour |
 |---|---|
-| Timeout or invalid JSON | One retry, then Needs review. |
+| Timeout, invalid JSON, or an error status from Ollama | One retry, then Needs review. |
 | Wrong category | User fixes it in the UI; the fix is undoable. |
 | Text inside a file tries to instruct Gemma | Worst case: a wrong category or an odd title. Gemma can only pick from the user's list, and code builds every name and path. File content cannot trigger an action or choose a folder. |
 

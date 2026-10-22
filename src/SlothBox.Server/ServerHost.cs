@@ -4,6 +4,7 @@ using System.Text.Json.Serialization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi;
 using Pgvector.EntityFrameworkCore;
+using SlothBox.Ai.Analyze;
 using SlothBox.Ai.Embed;
 using SlothBox.Core;
 using SlothBox.Core.Gate;
@@ -27,13 +28,13 @@ namespace SlothBox.Server;
 
 public static class ServerHost
 {
-    // Stands in for the Gemma analyzer until it is wired in: the worker reads it as "Gemma offline" and keeps
-    // checking, so uploads wait in the queue instead of failing.
-    private sealed class NoAnalyzerYet : IFileAnalyzer
+    // One client per Ollama caller: the base address is the Ollama URL, and the client's own timeout sits above one
+    // Gemma attempt (spec 5.4), so the per-attempt timeouts decide.
+    public static HttpClient OllamaClient(OllamaSettings ollama) => new()
     {
-        public Task<AnalysisResult> AnalyzeAsync(AnalysisRequest request, CancellationToken ct) =>
-            throw new HttpRequestException("The Gemma analyzer is not part of this build yet.");
-    }
+        BaseAddress = new Uri(ollama.Url),
+        Timeout = TimeSpan.FromSeconds(ollama.AnalyzeTimeoutSeconds + 30)
+    };
 
     public static WebApplication Build(string[] args)
     {
@@ -115,15 +116,13 @@ public static class ServerHost
         services.AddSingleton<IEmbedder>(sp =>
         {
             var ollama = sp.GetRequiredService<ISettingsStore>().Current.Ollama;
-            // The client's own timeout sits above the per-attempt timeouts (spec 5.4), so those decide.
-            var http = new HttpClient
-            {
-                BaseAddress = new Uri(ollama.Url),
-                Timeout = TimeSpan.FromSeconds(ollama.AnalyzeTimeoutSeconds + 30)
-            };
-            return new Embedder(http, ollama);
+            return new Embedder(OllamaClient(ollama), ollama);
         });
-        services.AddSingleton<IFileAnalyzer, NoAnalyzerYet>();
+        services.AddSingleton<IFileAnalyzer>(sp =>
+        {
+            var settings = sp.GetRequiredService<ISettingsStore>().Current;
+            return new FileAnalyzer(OllamaClient(settings.Ollama), settings.Ollama, settings.Pipeline);
+        });
         services.AddSingleton<IFilePipeline, FilePipeline>();
         services.AddSingleton<IDatabaseStartup, DatabaseStartup>();
         services.AddSingleton<WorkerState>();

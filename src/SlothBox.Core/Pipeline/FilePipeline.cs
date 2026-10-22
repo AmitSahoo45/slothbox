@@ -87,10 +87,15 @@ public sealed class FilePipeline(
                 result = await analyzer.AnalyzeAsync(
                     new AnalysisRequest(Path.GetFileName(path), label, forGemma, categoryList), ct);
             }
-            catch (HttpRequestException e)
+            catch (HttpRequestException e) when (e.StatusCode is null)
             {
                 // Ollama, or Docker, is not running: nothing is written and the job waits (spec 9).
                 return new PipelineResult.Offline(e.Message);
+            }
+            catch (HttpRequestException)
+            {
+                // Ollama answered, with an error for this file: it goes to Needs review instead of holding the queue.
+                result = new AnalysisResult.NeedsReview(ReviewReason.BadOutput);
             }
             var validation = ReviewRules.Check(result, categoryList, pipeline.DefaultCurrency, route.Kind);
             analysis = validation.Analysis ?? new Analysis(FileKind.Unknown, "", "", "", "", null);

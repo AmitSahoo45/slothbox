@@ -74,8 +74,9 @@ public sealed class FileAnalyzer(HttpClient http, OllamaSettings settings, Pipel
             return new AnalysisResult.NeedsReview(unsupported.Reason);
 
         var body = BuildRequest(request).ToJsonString();
-        // Section 9: a timeout or output that does not match the schema gets one retry, then Needs review.
-        // Ollama refusing the call (down, model missing, out of memory) throws, so the worker pauses the queue.
+        // Section 9: a timeout, an error status from Ollama or output that does not match the schema gets one
+        // retry, then Needs review, so one file Ollama cannot handle never holds the queue. Only a failed
+        // connection (Ollama or Docker not running) throws, and the worker pauses the queue until Gemma is back.
         for (var attempt = 1; attempt <= 2; attempt++)
         {
             using var timeout = CancellationTokenSource.CreateLinkedTokenSource(ct);
@@ -84,8 +85,8 @@ public sealed class FileAnalyzer(HttpClient http, OllamaSettings settings, Pipel
             {
                 using var content = new StringContent(body, Encoding.UTF8, "application/json");
                 using var response = await http.PostAsync("api/chat", content, timeout.Token);
-                response.EnsureSuccessStatusCode();
-                if (Parse(await response.Content.ReadAsStringAsync(timeout.Token), request.Categories) is { } analysis)
+                if (response.IsSuccessStatusCode &&
+                    Parse(await response.Content.ReadAsStringAsync(timeout.Token), request.Categories) is { } analysis)
                     return new AnalysisResult.Success(analysis);
             }
             catch (OperationCanceledException) when (!ct.IsCancellationRequested)
@@ -226,8 +227,8 @@ public sealed class FileAnalyzer(HttpClient http, OllamaSettings settings, Pipel
             ? day
             : null;
 
-    // Spec 5.2: a null payment method becomes unknown.
-    private static PaymentMethod ParseMethod(string? method) => method switch
+    // Spec 5.2: a null payment method becomes unknown. Gemma may answer in any case ("UPI").
+    private static PaymentMethod ParseMethod(string? method) => method?.Trim().ToLowerInvariant() switch
     {
         "upi" => PaymentMethod.Upi,
         "card" => PaymentMethod.Card,
