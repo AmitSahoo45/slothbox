@@ -1,10 +1,11 @@
 import { useRef, useState } from 'react'
 import * as Popover from '@radix-ui/react-popover'
 import * as Dialog from '@radix-ui/react-dialog'
-import { useMutation } from '@tanstack/react-query'
+import { useMutation, useQuery } from '@tanstack/react-query'
 import { request } from '../../api/client'
 import { useFileActions } from '../../api/file-actions'
 import { Button } from '../../components/Button'
+import { QueryError } from '../../components/QueryError'
 import { useToasts } from '../../components/toast-context'
 import { displayTime, localDate } from '../../components/format'
 import { ToastHost } from '../../components/ToastHost'
@@ -18,6 +19,15 @@ export function UndoSince() {
   const trigger = useRef<HTMLButtonElement>(null)
   const { notify } = useToasts()
   const { refresh } = useFileActions()
+  const sinceText = since?.toISOString()
+  // Counted afresh each time the dialog opens; the toast still reports what the undo actually reversed.
+  const preview = useQuery({
+    queryKey: ['undo-since', sinceText], enabled: !!sinceText, gcTime: 0,
+    queryFn: ({ signal }) => request('get', '/api/undo/since', { query: { since: sinceText! }, signal }),
+  })
+  const count = since && preview.data ? Number(preview.data.actions) : undefined
+  const actions = `${count} ${count === 1 ? 'action' : 'actions'}`
+  const time = since ? displayTime(since.toISOString()) : ''
   const undo = useMutation({
     mutationFn: (date: Date) => request('post', '/api/undo/since', { body: { since: date.toISOString() } }),
     onSuccess: result => {
@@ -47,11 +57,14 @@ export function UndoSince() {
     <Dialog.Root open={!!since} onOpenChange={open => { if (!open && !undo.isPending) setSince(null) }}>
       <Dialog.Portal><Dialog.Overlay className="dialog-overlay" /><Dialog.Content className="dialog-content"
         onCloseAutoFocus={event => { event.preventDefault(); trigger.current?.focus() }}>
-        <Dialog.Title>Undo actions since {since && displayTime(since.toISOString())}?</Dialog.Title>
-        <Dialog.Description>Actions since {since?.toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short', hour12: false })} will be undone, newest first.</Dialog.Description>
+        <Dialog.Title>{count === 0 ? `Nothing to undo since ${time}.` : `Undo ${count === undefined ? 'actions' : actions} since ${time}?`}</Dialog.Title>
+        <Dialog.Description>{count === 0 ? 'Actions already undone are not counted.'
+          : `Actions since ${since?.toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short', hour12: false })} will be undone, newest first.`}</Dialog.Description>
+        {preview.error && <QueryError error={preview.error} retry={() => { void preview.refetch() }} label="Retry count" />}
         <div className="form-actions">
-          <Button variant="destructive" busy={undo.isPending} onClick={() => { if (since) undo.mutate(since) }}>Undo actions</Button>
-          <Dialog.Close asChild><Button data-dialog-dismiss disabled={undo.isPending}>Cancel</Button></Dialog.Close>
+          {count !== 0 && <Button variant="destructive" busy={undo.isPending || preview.isFetching} disabled={count === undefined}
+            onClick={() => { if (since) undo.mutate(since) }}>{count === undefined ? 'Undo actions' : `Undo ${actions}`}</Button>}
+          <Dialog.Close asChild><Button data-dialog-dismiss disabled={undo.isPending}>{count === 0 ? 'Close' : 'Cancel'}</Button></Dialog.Close>
         </div>
         <ToastHost />
       </Dialog.Content></Dialog.Portal>

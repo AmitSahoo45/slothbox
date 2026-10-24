@@ -1884,6 +1884,15 @@ export interface operations {
                     "application/json": components["schemas"]["SearchResultDto"];
                 };
             };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
             /** @description Not Implemented */
             501: {
                 headers: {

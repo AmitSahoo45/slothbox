@@ -65,6 +65,20 @@ test('browser review supports category selection, skip, refile and undo with per
   expect((await get('review')).some((item: Schema['ReviewItemDto']) => item.file.file.fileId === id)).toBe(true)
 })
 
+test('browser Undo since preview counts the session actions the undo then reverses', async () => {
+  server.use(...createBrowserHandlers())
+  // Synthetic files are filed an hour apart, newest now: four fall within the last three hours.
+  const since = new Date(Date.now() - 3 * 3600000 - 60000).toISOString()
+  const preview = async () => (await fetch(`${base}/api/undo/since?since=${encodeURIComponent(since)}`)).json()
+  expect(await preview()).toEqual({ actions: 4 })
+  const result = await (await fetch(`${base}/api/undo/since`, {
+    method: 'POST', headers: { 'X-SlothBox': '1', 'Content-Type': 'application/json' }, body: JSON.stringify({ since }),
+  })).json()
+  expect(result.undone).toBe(4)
+  expect(await preview()).toEqual({ actions: 0 })
+  expect((await fetch(`${base}/api/undo/since`)).status).toBe(400)
+})
+
 test('browser activity uses limit/cursor and mutations reject missing protection headers', async () => {
   server.use(...createBrowserHandlers())
   const first = await (await fetch(`${base}/api/activity?limit=50`)).json()

@@ -1386,6 +1386,11 @@ so the toast reports the count actually undone, and any failed results are
 shown separately with their reasons. It never counts visible activity rows
 as actions.
 
+With 0 the dialog reads "Nothing to undo since 10:30." and offers only
+[Close]. While the count loads, or after it fails (shown with [Retry count]),
+[Undo actions] stays disabled, so nothing is undone without a count. Each
+opening of the dialog counts afresh.
+
 **Empty state:** "Nothing filed yet. Save a file to a watched folder, take a screenshot, or send one from your phone." with [Show phone QR code].
 
 #### 7.4.3 Needs review (`/review`)
@@ -1604,6 +1609,11 @@ Opens from the right, 440 px wide, over any page.
 - **Change** opens type and category pickers. It refiles the file, which can be undone.
 - **Focus** is trapped while the drawer is open. `Esc` closes it and returns focus to the row that opened it.
 
+**Track U integration:** File it and Change always send the receipt's payment
+method, as `unknown` when none is known, because the API reads an omitted
+method as UPI. A refused refile, such as "Nothing to change.", shows the API's
+message as an error toast and keeps the form, with no Undo.
+
 #### 7.4.10 Banners and toasts
 
 **Banners** sit at the top of the content area on every page.
@@ -1814,7 +1824,8 @@ src/SlothBox.Web/
 - The development fixtures include paginated activity and a review queue.
   Skip, refile and Undo retain their synthetic state for the page session and
   publish SSE updates. Open and Show in folder acknowledge the request without
-  accessing local files.
+  accessing local files. The Undo since count previews the same synthetic
+  actions.
 - Search and the monthly receipt ledger use those same synthetic files. Folder
   changes, phone-link rotation and setup completion persist within the page
   session. Tidy progress is simulated through SSE. Open `/setup?mockSetup` in

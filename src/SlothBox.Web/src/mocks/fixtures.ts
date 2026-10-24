@@ -80,6 +80,7 @@ export const responses = {
   Refile: details,
   UndoLast: undone,
   UndoSince: { undone: 1, results: [undone] },
+  PreviewUndoSince: { actions: 1 },
   GetReview: [{ file: review, reason: 'missing_amount' }],
   SkipReview: success,
   Search: { items: [{ file: details, score: 0.95, matchedWords: true, matchedMeaning: true }] },

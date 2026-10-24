@@ -22,6 +22,7 @@ export const handlers = [
   http.post('*/api/files/:id/refile', json('Refile')),
   http.post('*/api/undo/last', json('UndoLast')),
   http.post('*/api/undo/since', json('UndoSince')),
+  http.get('*/api/undo/since', json('PreviewUndoSince')),
   http.get('*/api/review', json('GetReview')),
   http.post('*/api/review/:id/skip', json('SkipReview')),
   http.get('*/api/search', json('Search')),

@@ -4,6 +4,7 @@ import { http, HttpResponse } from 'msw'
 import { App } from '../src/App'
 import { responses, activity } from '../src/mocks/fixtures'
 import { server } from '../src/mocks/server'
+import type { Schema } from '../src/api/types'
 import { setupUi, TestEvents } from './ui-helpers'
 
 setupUi()
@@ -207,23 +208,69 @@ test('an undo during initial activity load restarts the request for authoritativ
   expect(await screen.findByText('Receipts / Restored review')).toBeVisible()
 })
 
-test('Undo since confirms before posting, then reports actual results and partial failures', async () => {
-  let sent: unknown
-  server.use(http.post('*/api/undo/since', async ({ request }) => {
-    sent = await request.json()
-    return HttpResponse.json({ undone: 12, results: [
-      responses.UndoFile, { ...responses.UndoFile, success: false, reason: 'Original folder is unavailable.' },
-    ] })
-  }))
+test('Undo since confirms the previewed count, then reports actual results and partial failures', async () => {
+  let previewed: string | null = null
+  let sent: Schema['UndoSinceRequest'] | undefined
+  server.use(
+    http.get('*/api/undo/since', ({ request }) => {
+      previewed = new URL(request.url).searchParams.get('since')
+      return HttpResponse.json({ actions: 12 })
+    }),
+    http.post('*/api/undo/since', async ({ request }) => {
+      sent = await request.json() as Schema['UndoSinceRequest']
+      return HttpResponse.json({ undone: 11, results: [
+        ...Array.from({ length: 11 }, () => responses.UndoFile),
+        { ...responses.UndoFile, success: false, reason: 'Original folder is unavailable.' },
+      ] })
+    }),
+  )
   render(<App />)
   fireEvent.click(await screen.findByRole('button', { name: 'Undo since…' }))
   fireEvent.click(await screen.findByRole('button', { name: 'Last hour' }))
-  const dialog = await screen.findByRole('dialog', { name: /Undo actions since/ })
+  const dialog = await screen.findByRole('dialog', { name: /^Undo 12 actions since \d{2}:\d{2}\?$/ })
   expect(sent).toBeUndefined()
-  fireEvent.click(within(dialog).getByRole('button', { name: 'Undo actions' }))
-  expect(await screen.findByText('Undone 12 actions')).toBeVisible()
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Undo 12 actions' }))
+  expect(await screen.findByText('Undone 11 actions')).toBeVisible()
   expect(await screen.findByText(/Original folder is unavailable/)).toBeVisible()
-  expect(sent).toEqual({ since: expect.any(String) })
+  expect(sent).toEqual({ since: previewed })
+})
+
+test.each([
+  { actions: 0, name: /^Nothing to undo since \d{2}:\d{2}\.$/, confirm: null },
+  { actions: '1', name: /^Undo 1 action since \d{2}:\d{2}\?$/, confirm: 'Undo 1 action' },
+])('Undo since with a preview of $actions states that count before anything is posted', async ({ actions, name, confirm }) => {
+  let posted = false
+  server.use(
+    http.get('*/api/undo/since', () => HttpResponse.json({ actions })),
+    http.post('*/api/undo/since', () => { posted = true; return HttpResponse.json(responses.UndoSince) }),
+  )
+  render(<App />)
+  fireEvent.click(await screen.findByRole('button', { name: 'Undo since…' }))
+  fireEvent.click(await screen.findByRole('button', { name: 'Today' }))
+  const dialog = await screen.findByRole('dialog', { name })
+  if (confirm) {
+    expect(within(dialog).getByRole('button', { name: confirm })).toBeEnabled()
+  } else {
+    expect(within(dialog).queryByRole('button', { name: /^Undo/ })).not.toBeInTheDocument()
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Close' }))
+    await waitFor(() => expect(screen.queryByRole('dialog')).not.toBeInTheDocument())
+  }
+  expect(posted).toBe(false)
+})
+
+test('a failed Undo since count offers Retry and allows no undo until a count arrives', async () => {
+  let calls = 0
+  server.use(http.get('*/api/undo/since', () => ++calls === 1
+    ? HttpResponse.json({ title: 'Could not count the actions.' }, { status: 400 })
+    : HttpResponse.json({ actions: 3 })))
+  render(<App />)
+  fireEvent.click(await screen.findByRole('button', { name: 'Undo since…' }))
+  fireEvent.click(await screen.findByRole('button', { name: 'Last 15 minutes' }))
+  const dialog = await screen.findByRole('dialog', { name: /^Undo actions since/ })
+  expect(await within(dialog).findByText('Could not count the actions.')).toBeVisible()
+  expect(within(dialog).getByRole('button', { name: 'Undo actions' })).toBeDisabled()
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Retry count' }))
+  expect(await within(dialog).findByRole('button', { name: 'Undo 3 actions' })).toBeEnabled()
 })
 
 test('failed undo shows its reason and never claims success', async () => {
