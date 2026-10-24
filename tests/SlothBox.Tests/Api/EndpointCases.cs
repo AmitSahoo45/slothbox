@@ -6,7 +6,6 @@ public static class EndpointCases
 
     public static IEnumerable<object[]> All =>
     [
-        ["GET", "/api/search?q=example&type=document&from=2026-10-01&to=2026-10-20", ""],
         ["GET", "/api/receipts?month=2026-10", ""],
         ["GET", "/api/receipts/export.csv?month=2026-10", ""],
         ["GET", "/api/categories", ""],
@@ -27,7 +26,6 @@ public static class EndpointCases
         ["GET", "/api/phone", ""],
         ["POST", "/api/phone/rotate", ""],
         ["GET", "/api/ignored", ""],
-        ["DELETE", "/api/ignored/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", ""],
-        ["POST", "/api/search-data/rebuild", ""]
+        ["DELETE", "/api/ignored/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", ""]
     ];
 }

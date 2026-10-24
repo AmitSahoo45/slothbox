@@ -10,8 +10,8 @@ internal static class StubEndpoints
     internal static void Map(WebApplication app)
     {
         var api = app.MapGroup("/api").WithTags("Dashboard");
-        Document<SearchResultDto>(api.MapGet("/search",
-            (string? q, string? type, int? categoryId, DateOnly? from, DateOnly? to) => NotImplemented()), "Search");
+        Document<SearchResultDto>(api.MapGet("/search", SearchEndpoints.Search)
+            .ProducesProblem(StatusCodes.Status400BadRequest), "Search");
         Document<ReceiptsDto>(api.MapGet("/receipts", (string? month) => NotImplemented()), "GetReceipts");
         Binary(api.MapGet("/receipts/export.csv", (string? month) => NotImplemented()), "ExportReceipts", "text/csv");
         Document<IReadOnlyList<CategoryDto>>(api.MapGet("/categories", NotImplemented), "GetCategories");
@@ -35,7 +35,7 @@ internal static class StubEndpoints
         Document<PhoneDto>(api.MapPost("/phone/rotate", NotImplemented), "RotatePhone");
         Document<IReadOnlyList<IgnoredFileDto>>(api.MapGet("/ignored", NotImplemented), "GetIgnored");
         Document<MutationResultDto>(api.MapDelete("/ignored/{sha256}", (string sha256) => NotImplemented()), "AllowIgnored");
-        Document<RebuildResultDto>(api.MapPost("/search-data/rebuild", NotImplemented), "RebuildSearchData");
+        Document<RebuildResultDto>(api.MapPost("/search-data/rebuild", SearchEndpoints.Rebuild), "RebuildSearchData");
 
     }
 

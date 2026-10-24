@@ -758,6 +758,8 @@ Gemma never writes the file name. It returns fields, and `INameBuilder` builds t
 
 The document and query prefixes match the EmbeddingGemma model card (verified 20 Oct 2026, A9). SlothBox adds them itself; Ollama adds none. Use `POST /api/embed`.
 
+**Rebuild missing search data** (`POST /search-data/rebuild`) counts the filed files that have no vector and returns that number at once. A background task then embeds them one at a time, with the same document input, and stops at the first embedding failure. Only one rebuild runs at a time; asking again while it runs only reports what is still missing.
+
 ### 5.7 Queue and jobs
 
 - **Storage:** jobs live in Postgres. Status moves through `queued → processing → done | review | failed | skipped`.
@@ -975,9 +977,11 @@ ORDER BY score DESC
 LIMIT 20;
 ```
 
-Optional filters (type, category, date range) are added to both inner queries.
+Optional filters (type, category, date range) are added to both inner queries. The date range covers whole local days of `file_date`, both ends included. A blank query returns no hits. If embedding the query fails for any reason (offline, model missing, a bad answer), the meaning branch is skipped, so every hit matches by words only.
 
 The query runs in a transaction that first runs `SET LOCAL hnsw.ef_search = 100`. pgvector's default (40) is below `LIMIT 50`, so without it the meaning branch returns at most 40 rows.
+
+The same transaction runs `SET LOCAL hnsw.iterative_scan = strict_order` (pgvector 0.8). HNSW applies the filters after it picks its candidates. Without the iterative scan, a narrow filter, or many undone files that keep their vectors, can leave the meaning branch short or empty.
 
 ### 6.4 Safe move
 
@@ -1863,7 +1867,7 @@ src/SlothBox.Web/
 | GET | `/undo/since?since=` | Preview: how many actions Undo since would reverse (7.4.2) |
 | GET | `/review` | Needs review items with reason codes |
 | POST | `/review/{id}/skip` | Move to the end of the review list |
-| GET | `/search?q=&type=&categoryId=&from=&to=` | Hybrid search; each hit has `matchedWords` and `matchedMeaning` |
+| GET | `/search?q=&type=&categoryId=&from=&to=` | Hybrid search; each hit has `matchedWords` and `matchedMeaning`; an unknown `type` gets 400 |
 | GET | `/receipts?month=2026-10` | Rows and totals per category and currency |
 | GET | `/receipts/export.csv?month=2026-10` | CSV download |
 | GET, POST | `/categories` | List, create |
