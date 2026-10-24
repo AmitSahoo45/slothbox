@@ -64,8 +64,11 @@ public sealed class FolderRules(IPlatformPaths platform) : IFolderRules
     private string? Place(string path, string fullPathNeeded, string network, out string full)
     {
         full = "";
-        // Device paths (\\?\, \\.\) and relative paths would slip past the folder comparisons.
-        if (path.StartsWith(@"\\?\", StringComparison.Ordinal) || path.StartsWith(@"\\.\", StringComparison.Ordinal))
+        // Windows reads / as \, so "/\server\share" is a share and "\/?\" a device path (a no-op elsewhere).
+        path = path.Replace(Path.AltDirectorySeparatorChar, Path.DirectorySeparatorChar);
+        // Device paths (\\?\, \\.\, \??\) and relative paths would slip past the folder comparisons.
+        if (path.StartsWith(@"\\?\", StringComparison.Ordinal) || path.StartsWith(@"\\.\", StringComparison.Ordinal) ||
+            path.StartsWith(@"\??\", StringComparison.Ordinal))
             return fullPathNeeded;
         // Judged before anything touches the path: probing a network share can hang.
         if (platform.IsNetworkPath(path))

@@ -24,22 +24,41 @@ public sealed class SettingsService(ISettingsStore settings, IAutoStart? autoSta
             return new Outcome<SettingsDto>.Refused("Use whole seconds from 0 up.");
         if (OllamaAddress(request.OllamaUrl) is not { } url)
             return new Outcome<SettingsDto>.Refused("Use an http or https address, like http://127.0.0.1:11436.");
-        if (request.StartAtLogin != (autoStart?.IsEnabled ?? false))
+        var runKey = request.StartAtLogin != (autoStart?.IsEnabled ?? false);
+        if (runKey && autoStart is null)
+            return new Outcome<SettingsDto>.Conflict(
+                "Start at login is set by the SlothBox app on Windows, which is not running.");
+        // settings.json first: when it cannot be read or written (spec 11), the Run key is not touched. The Ollama calls
+        // follow the saved address from their next call (LiveOllama).
+        SlothBoxSettings? previous = null;
+        try
         {
-            if (autoStart is null)
-                return new Outcome<SettingsDto>.Conflict(
-                    "Start at login is set by the SlothBox app on Windows, which is not running.");
+            settings.Update(current =>
+            {
+                previous = current;
+                return current with { Laziness = laziness, Ollama = current.Ollama with { Url = url } };
+            });
+        }
+        catch (Exception e) when (e is InvalidOperationException or IOException or UnauthorizedAccessException)
+        {
+            return new Outcome<SettingsDto>.Conflict($"SlothBox could not save its settings: {e.Message}");
+        }
+        if (runKey)
+        {
             try
             {
-                autoStart.SetEnabled(request.StartAtLogin);
+                autoStart!.SetEnabled(request.StartAtLogin);
             }
             catch (Exception e) when (e is UnauthorizedAccessException or SecurityException or IOException)
             {
+                // Nothing of a refused change stays: the saved values go back.
+                settings.Update(current => current with
+                {
+                    Laziness = previous!.Laziness, Ollama = current.Ollama with { Url = previous.Ollama.Url }
+                });
                 return new Outcome<SettingsDto>.Conflict($"Windows did not let SlothBox change start at login: {e.Message}");
             }
         }
-        // The Ollama calls follow the saved address from their next call (LiveOllama).
-        settings.Update(current => current with { Laziness = laziness, Ollama = current.Ollama with { Url = url } });
         return new Outcome<SettingsDto>.Done(Get());
     }
 

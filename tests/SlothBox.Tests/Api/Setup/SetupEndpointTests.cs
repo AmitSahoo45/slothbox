@@ -174,6 +174,37 @@ public sealed class SetupEndpointTests(PostgresFixture postgres)
     }
 
     [Fact]
+    public async Task An_empty_folder_entry_is_refused()
+    {
+        await using var h = await FirstRunAsync();
+        var body = System.Text.Json.JsonSerializer.Serialize(new
+        {
+            outputRoot = h.Moves.Temp.PathOf("SlothBox"), folders = new object?[] { null }, finishAnyway = false
+        });
+
+        using var response = await h.SendJsonAsync(HttpMethod.Post, "/api/setup/complete", body);
+
+        response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
+        (await response.ReadAsync<ProblemDetails>()).Title.ShouldBe("Choose a folder for each entry.");
+    }
+
+    // Spec 11: settings.json broken since startup. Setup is not finished, and Finish anyway's pause is lifted again.
+    [Fact]
+    public async Task A_settings_file_that_cannot_be_saved_leaves_setup_unfinished_and_the_queue_running()
+    {
+        await using var h = await FirstRunAsync(services =>
+            services.AddSingleton<ISettingsStore>(new UnsavableSettings(new SlothBoxSettings())));
+
+        using var response = await h.SendAsync(HttpMethod.Post, "/api/setup/complete",
+            new CompleteSetupRequest(h.Moves.Temp.PathOf("SlothBox"), [], true));
+
+        response.StatusCode.ShouldBe(HttpStatusCode.Conflict);
+        (await response.ReadAsync<ProblemDetails>()).Title.ShouldBe(
+            $"SlothBox could not save its settings: {UnsavableSettings.Problem}");
+        h.Service<WorkerState>().Paused.ShouldBeFalse();
+    }
+
+    [Fact]
     public async Task Setup_can_be_finished_only_once()
     {
         await using var h = await FirstRunAsync();
@@ -302,10 +333,16 @@ public sealed class SetupWithoutDatabaseTests : IDisposable
 
         (await server.GetAsync<SetupDto>("/api/setup")).NativePickerAvailable.ShouldBeTrue();
         using (var picked = await server.SendAsync(HttpMethod.Post, "/api/system/pick-folder"))
+        {
+            picked.StatusCode.ShouldBe(HttpStatusCode.OK);
             (await picked.ReadAsync<PickFolderResultDto>()).ShouldBe(new PickFolderResultDto(_temp.PathOf("Scans")));
+        }
         dialogs.Answer = null;
         using (var cancelled = await server.SendAsync(HttpMethod.Post, "/api/system/pick-folder"))
+        {
+            cancelled.StatusCode.ShouldBe(HttpStatusCode.OK);
             (await cancelled.ReadAsync<PickFolderResultDto>()).ShouldBe(new PickFolderResultDto(null));
+        }
     }
 
     [Fact]

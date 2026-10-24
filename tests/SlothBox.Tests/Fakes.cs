@@ -84,6 +84,17 @@ internal sealed class FixedSettings(SlothBoxSettings settings) : ISettingsStore
     }
 }
 
+// settings.json broken by a hand edit after startup (spec 11): reads give what was loaded, every save fails.
+internal sealed class UnsavableSettings(SlothBoxSettings settings) : ISettingsStore
+{
+    public const string Problem = "settings.json could not be read.";
+
+    public SlothBoxSettings Current => settings;
+
+    public SlothBoxSettings Update(Func<SlothBoxSettings, SlothBoxSettings> change) =>
+        throw new InvalidOperationException(Problem);
+}
+
 // What the App would report for Windows' Downloads and Screenshots folders.
 internal sealed class FakeKnownFolders : IKnownFolders
 {

@@ -28,6 +28,19 @@ public sealed class PhoneEndpointTests
     }
 
     [Fact]
+    public async Task The_link_uses_the_port_phones_are_served_on_whatever_settings_say()
+    {
+        await using var server = Server(Lan);
+        server.Settings.Current = server.Settings.Current with
+        {
+            Phone = server.Settings.Current.Phone with { Port = 5090 }
+        };
+
+        (await server.GetAsync<PhoneDto>("/api/phone")).Url
+            .ShouldBe("http://192.168.1.23:5081/u/synthetic-phone-token");
+    }
+
+    [Fact]
     public async Task The_firewall_rule_is_found_by_its_display_name()
     {
         var firewall = new FakeFirewall("SlothBox phone page");

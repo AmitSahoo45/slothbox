@@ -15,6 +15,9 @@ public sealed class PhoneLink(ISettingsStore settings, IFirewallRules? firewall 
     // The display name of the rule from the README setup (spec 15 step 5).
     public const string FirewallRuleName = "SlothBox phone page";
 
+    // The port the phone listener has (ServerHost, ApiProtection), whatever settings.json says.
+    private const int ListenerPort = 5081;
+
     // A documentation address (TEST-NET-1): only the routing table is asked about it, nothing is sent there.
     private static readonly IPEndPoint RouteProbe = new(IPAddress.Parse("192.0.2.1"), 9);
 
@@ -25,7 +28,7 @@ public sealed class PhoneLink(ISettingsStore settings, IFirewallRules? firewall 
     {
         var phone = settings.Current.Phone;
         var address = phone.Enabled ? _lanAddress() : null;
-        var url = address is null ? null : $"http://{address}:{phone.Port}/u/{phone.Token}";
+        var url = address is null ? null : $"http://{address}:{ListenerPort}/u/{phone.Token}";
         return new PhoneDto(phone.Enabled, url, url is null ? null : QrSvg(url),
             firewall?.Exists(FirewallRuleName) ?? false);
     }

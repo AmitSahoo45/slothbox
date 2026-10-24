@@ -355,7 +355,7 @@ Inputs are a list the user manages on the Folders page (Section 7.4.6).
 | A cloud-synced folder (under the `OneDrive`, `OneDriveConsumer` or `OneDriveCommercial` paths, or containing a `Google Drive` or `Dropbox` segment) | Allowed, mode forced to Copy only: moving a file out would delete it from the cloud |
 | Missing or no access | Refused, with the reason |
 
-- **Order:** device paths (`\\?\`, `\\.\`), network, relative paths, drive root, system folder, output folder, watched folders, missing or no access, then cloud. A network path is judged before anything touches it. Device and relative paths (including a bare `D:`) are refused with "Use a full folder path, like D:\Scans."
+- **Order:** device paths (`\\?\`, `\\.\`, `\??\`; `/` counts as `\`, as Windows reads it), network, relative paths, drive root, system folder, output folder, watched folders, missing or no access, then cloud. A network path is judged before anything touches it. Device and relative paths (including a bare `D:`) are refused with "Use a full folder path, like D:\Scans."
 - **"Inside"** compares whole folder names, without regard to case: `Windows Backups` is not inside `Windows`. A folder that only contains a system or output folder is not refused, because watchers do not look into subfolders.
 - **Cloud:** `Dropbox (Work)` and similar team folders count as Dropbox. Google Drive for desktop's `My Drive` and `Shared drives` folders count as Google Drive.
 
@@ -1065,7 +1065,7 @@ On startup, each `pending` action is resolved:
 
 **Un-ignore**
 - Settings lists ignored files, newest first, each named by where Undo put it back, and can allow one again.
-- "Allow again" removes the hash from `ignored_hashes` and, in the same transaction, the finished path of the file Undo put back (4.5); otherwise the sweep would keep passing over the unchanged file and never queue it. A sweep then runs at once and files it. A copy of the same content at another path keeps its record until that file changes.
+- "Allow again" removes the hash from `ignored_hashes` and, in the same transaction, the finished path of the file Undo put back (4.5); otherwise the sweep would keep passing over the unchanged file and never queue it. A sweep then runs at once and files it. The record goes only while it can still be that file: the same size, and no file SlothBox took from that path since the undo. A copy of the same content at another path keeps its record until that file changes, and so does a file whose ignored skip is still being recorded when Allow again is clicked.
 
 ### 6.7 Starter categories
 
@@ -1324,7 +1324,7 @@ Three steps, in order. Moving back is allowed until "Finish setup".
 - **Step 3:**
   - "Finish setup" is enabled when all three checks pass.
   - "Finish anyway" is a quiet link that finishes with the queue paused (`pauseReason: user`), so the banner offers Resume.
-  - Finishing saves the folders and `setup_completed_at` in the database, so it is refused (409) while the database is offline, Finish anyway included. Everything is checked before anything is written: a refused output folder or folder (400, the folder named in the reason) leaves nothing behind. Folders an earlier, failed try saved are kept, not added twice. The output folder is saved last; the worker and the watchers start then. Setup finishes once: afterwards it answers 409, as the output folder is fixed (D26).
+  - Finishing saves the folders and `setup_completed_at` in the database, so it is refused (409) while the database is offline, Finish anyway included. It is also refused (409) when `settings.json` cannot be saved (11); a pause Finish anyway set is then lifted again. Everything is checked before anything is written: a refused output folder or folder (400, the folder named in the reason) leaves nothing behind. Folders an earlier, failed try saved are kept, not added twice. The output folder is saved last; the worker and the watchers start then. Setup finishes once: afterwards it answers 409, as the output folder is fixed (D26).
   - The checks re-run every 10 s.
 
 **Track U contract boundary:** Setup checks the absolute path and selected
@@ -1780,7 +1780,7 @@ Tray notifications appear only when a file goes to Needs review. Clicking one op
 - Safari is expected to convert HEIC to JPEG on upload. Verify on a real iPhone.
 
 **LAN address**
-- The QR code uses the private IPv4 address (10/8, 172.16/12, 192.168/16) of the interface with the default route. Without one, or while the phone page is off, `GET /phone` has no link and no QR code.
+- The QR code uses the private IPv4 address (10/8, 172.16/12, 192.168/16) of the interface with the default route, and port 5081, where the phone listener is (A1), whatever `Phone.Port` says. Without one, or while the phone page is off, `GET /phone` has no link and no QR code.
 - "New link" saves a new token; the old link answers 401 at once.
 
 ### 7.10 Front-end technology and structure
@@ -1903,8 +1903,8 @@ src/SlothBox.Web/
 | POST | `/folders/{id}/tidy-existing` | Queue the baseline files; 409 while the folder is off or missing |
 | DELETE | `/folders/{id}` | Stop watching |
 | POST | `/system/pick-folder` | Opens the native dialog; returns `{ path }` or `{ path: null }` when cancelled; 409 in headless mode or when the dialog fails |
-| GET, PUT | `/settings` | Theme is UI-only; this covers start at login, laziness seconds, Ollama address. PUT: 400 for negative seconds or an Ollama address the calls could not use (not http or https, or with a query, fragment or user name), 409 when start at login cannot be changed (no App, or Windows refused) |
-| GET, POST | `/setup`, `/setup/complete` | Setup state; finishing setup (output folder, initial folders). 400 with the rule's reason when the output folder or a folder is refused, 409 once setup is finished or while the database is offline (7.4.1) |
+| GET, PUT | `/settings` | Theme is UI-only; this covers start at login, laziness seconds, Ollama address. PUT: 400 for negative seconds or an Ollama address the calls could not use (not http or https, or with a query, fragment or user name), 409 when start at login cannot be changed (no App, or Windows refused) or `settings.json` cannot be saved; a refused change keeps neither the Run key nor the values |
+| GET, POST | `/setup`, `/setup/complete` | Setup state; finishing setup (output folder, initial folders). 400 with the rule's reason when the output folder or a folder is refused, 409 once setup is finished, while the database is offline, or when `settings.json` cannot be saved (7.4.1) |
 | POST | `/setup/check-output` | Body `{ path }`; whether the output-folder rules (7.4.1) accept it, with the reason when not |
 | GET | `/phone` | Phone URL, QR code as SVG, firewall rule present |
 | POST | `/phone/rotate` | New token |
@@ -2069,7 +2069,7 @@ The file is read leniently: comments, trailing commas and any name case are acce
 
 The app adds the password from `SLOTHBOX_DB_PASSWORD` at startup. If the variable is missing, the Database check fails with "Set SLOTHBOX_DB_PASSWORD (see README setup)".
 
-Setup (the output folder), the Settings page (laziness seconds, Ollama address) and "New link" (the phone token) save the file. Each save reads the file again first, so a hand edit made since startup is kept and a file that cannot be read is reported and never overwritten; it is written beside the file, then moved over it, so a crash never leaves half a file. A saved file loses hand-written comments.
+Setup (the output folder), the Settings page (laziness seconds, Ollama address) and "New link" (the phone token) save the file. Each save reads the file again first, so a hand edit made since startup is kept and a file that cannot be read is reported and never overwritten; it is written beside the file and flushed to the disk, then moved over it, so a crash or a power cut never leaves half a file. A saved file loses hand-written comments.
 
 ---
 

@@ -77,10 +77,13 @@ public sealed class SetupService(
         var adding = new List<(WatchedFolder Folder, IReadOnlyList<string> Baseline)>();
         foreach (var chosen in request.Folders ?? [])
         {
+            if (chosen is null)
+                return new Outcome<SetupDto>.Refused("Choose a folder for each entry.");
             var known = watched.Concat(adding.Select(add => add.Folder)).ToList();
             if (IsOneOf(chosen.Path, known))
                 continue;
-            var name = string.IsNullOrWhiteSpace(chosen.Label) ? chosen.Path : chosen.Label.Trim();
+            var name = !string.IsNullOrWhiteSpace(chosen.Label) ? chosen.Label.Trim()
+                : !string.IsNullOrWhiteSpace(chosen.Path) ? chosen.Path : "A folder";
             var check = rules.Check((chosen.Path ?? "").Trim(), known, output);
             if (check is FolderCheck.Refused refused)
                 return new Outcome<SetupDto>.Refused($"{name}: {refused.Reason}");
@@ -109,10 +112,21 @@ public sealed class SetupService(
             await folders.AddAsync(folder, baseline, ct);
         await appState.SetAsync(CompletedKey, DateTimeOffset.UtcNow.ToString("O", CultureInfo.InvariantCulture), ct);
         // Finish anyway: the queue starts paused, as if the user had paused it, before the worker can start.
+        var pausedHere = request.FinishAnyway && !worker.Paused;
         if (request.FinishAnyway)
             worker.Pause(PauseReason.User);
         // Last: once the output folder is saved, the worker and the watchers start (spec 4.3 step 5).
-        settings.Update(current => current with { OutputRoot = output });
+        try
+        {
+            settings.Update(current => current with { OutputRoot = output });
+        }
+        catch (Exception e) when (e is InvalidOperationException or IOException or UnauthorizedAccessException)
+        {
+            // Setup is not finished (spec 11: settings.json cannot be read or written), so this pause goes again.
+            if (pausedHere)
+                worker.TryResume(PauseReason.User);
+            return new Outcome<SetupDto>.Conflict($"SlothBox could not save its settings: {e.Message}");
+        }
         sweeps.Request();
         log.LogInformation("First-run setup finished with {Count} new watched folder(s).", adding.Count);
         return new Outcome<SetupDto>.Done(await GetAsync(ct));

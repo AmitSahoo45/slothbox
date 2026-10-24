@@ -75,12 +75,17 @@ public sealed class SettingsFile(string path) : ISettingsStore
         return settings;
     }
 
-    // Written beside the file, then moved over it, so a crash never leaves half a settings file.
+    // Written beside the file and flushed to the disk, then moved over it, so a crash or a power cut never leaves half
+    // a settings file.
     private static void Save(string path, SlothBoxSettings settings)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         var temp = path + ".tmp";
-        File.WriteAllText(temp, JsonSerializer.Serialize(settings, WriteOptions));
+        using (var stream = new FileStream(temp, FileMode.Create, FileAccess.Write, FileShare.None))
+        {
+            JsonSerializer.Serialize(stream, settings, WriteOptions);
+            stream.Flush(flushToDisk: true);
+        }
         File.Move(temp, path, overwrite: true);
     }
 }

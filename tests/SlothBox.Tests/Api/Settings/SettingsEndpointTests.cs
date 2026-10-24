@@ -135,6 +135,24 @@ public sealed class SettingsEndpointTests
     }
 
     [Fact]
+    public async Task A_settings_file_that_cannot_be_saved_is_reported_and_the_run_key_stays()
+    {
+        var autoStart = new FakeAutoStart();
+        await using var server = new ApiServer(services =>
+        {
+            services.AddSingleton<IAutoStart>(autoStart);
+            services.AddSingleton<ISettingsStore>(new UnsavableSettings(new SlothBoxSettings()));
+        });
+
+        using var response = await PutAsync(server, new UpdateSettingsRequest(true, Estimates, "http://127.0.0.1:11436"));
+
+        response.StatusCode.ShouldBe(HttpStatusCode.Conflict);
+        (await response.ReadAsync<ProblemDetails>()).Title.ShouldBe(
+            $"SlothBox could not save its settings: {UnsavableSettings.Problem}");
+        autoStart.IsEnabled.ShouldBeFalse();
+    }
+
+    [Fact]
     public async Task A_run_key_that_cannot_be_changed_is_reported_and_nothing_is_saved()
     {
         var autoStart = new FakeAutoStart { Failure = new UnauthorizedAccessException("Access to the key is denied.") };
@@ -148,22 +166,66 @@ public sealed class SettingsEndpointTests
         server.Settings.Current.Laziness.ShouldBe(new LazinessSettings());
     }
 
-    // Check again uses the saved address (spec 7.4.8): Ollama is asked at the new address at once, no restart.
+    // Check again uses the saved address (spec 7.4.8): Ollama is asked at the new address at once, no restart. The
+    // first address answers nothing; the second is a stand-in Ollama on loopback that lists both models.
     [Fact]
     public async Task The_status_check_asks_ollama_at_the_saved_address()
     {
-        var (first, second) = (ClosedPort(), ClosedPort());
+        var closed = ClosedPort();
+        using var ollama = new StandInOllama();
         await using var server = new ApiServer(services => services.AddSingleton<IOllamaStatus, LiveOllamaStatus>());
 
-        foreach (var port in new[] { first, second })
-        {
-            using var saved = await PutAsync(server,
-                new UpdateSettingsRequest(false, Estimates, $"http://127.0.0.1:{port}"));
-            saved.StatusCode.ShouldBe(HttpStatusCode.OK);
+        using (var first = await PutAsync(server, new UpdateSettingsRequest(false, Estimates, $"http://127.0.0.1:{closed}")))
+            first.StatusCode.ShouldBe(HttpStatusCode.OK);
+        (await server.GetAsync<StatusDto>("/api/status")).Gemma
+            .ShouldBe(new ServiceStatusDto(false, $"Ollama is not answering at http://127.0.0.1:{closed}."));
 
-            (await server.GetAsync<StatusDto>("/api/status")).Gemma
-                .ShouldBe(new ServiceStatusDto(false, $"Ollama is not answering at http://127.0.0.1:{port}."));
+        using (var second = await PutAsync(server, new UpdateSettingsRequest(false, Estimates, ollama.Url)))
+            second.StatusCode.ShouldBe(HttpStatusCode.OK);
+        var status = await server.GetAsync<StatusDto>("/api/status");
+
+        (status.Gemma, status.VisionModel.Present, status.EmbeddingModel.Present)
+            .ShouldBe((new ServiceStatusDto(true, null), true, true));
+        ollama.Paths.ShouldContain("/api/tags");
+    }
+
+    // Answers /api/tags and /api/ps with both models, as a running Ollama would.
+    private sealed class StandInOllama : IDisposable
+    {
+        private readonly HttpListener _listener = new();
+
+        public StandInOllama()
+        {
+            var port = ClosedPort();
+            Url = $"http://127.0.0.1:{port}";
+            _listener.Prefixes.Add(Url + "/");
+            _listener.Start();
+            _ = ServeAsync();
         }
+
+        public string Url { get; }
+        public System.Collections.Concurrent.ConcurrentQueue<string> Paths { get; } = new();
+
+        private async Task ServeAsync()
+        {
+            try
+            {
+                while (_listener.IsListening)
+                {
+                    var context = await _listener.GetContextAsync();
+                    Paths.Enqueue(context.Request.Url!.AbsolutePath);
+                    var body = """{"models":[{"name":"gemma4:e4b"},{"name":"embeddinggemma:latest"}]}"""u8.ToArray();
+                    context.Response.ContentType = "application/json";
+                    await context.Response.OutputStream.WriteAsync(body);
+                    context.Response.Close();
+                }
+            }
+            catch (Exception e) when (e is HttpListenerException or ObjectDisposedException or InvalidOperationException)
+            {
+            }
+        }
+
+        public void Dispose() => _listener.Close();
     }
 
     // A loopback port nothing listens on, so the call fails at once without leaving the machine.

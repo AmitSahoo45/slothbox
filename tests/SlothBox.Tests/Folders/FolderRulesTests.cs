@@ -182,6 +182,24 @@ public sealed class FolderRulesTests : IDisposable
         CheckOutput(file).ShouldBe("This is a file, not a folder.");
     }
 
+    [Fact]
+    public void An_nt_prefixed_device_path_is_refused_for_watching_and_for_output()
+    {
+        Check(@"\??\" + Folder("Windows", "Temp")).ShouldBe(new FolderCheck.Refused(FullPath));
+        CheckOutput(@"\??\" + Folder("Windows", "SlothBox")).ShouldBe(OutputFullPath);
+    }
+
+    // Windows reads / as \: a share or a device path written with mixed separators is still one.
+    [Fact]
+    public void Mixed_separators_do_not_hide_a_share_or_a_device_path()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "Only Windows reads / as a separator in these paths.");
+        CheckOutput(@"/\nas\share\SlothBox").ShouldBe(
+            "SlothBox can't keep sorted files in a network folder in this version.");
+        Check(@"/\nas\photos").ShouldBe(new FolderCheck.Refused(Network));
+        CheckOutput(@"\/?\" + Folder("Windows", "SlothBox")).ShouldBe(OutputFullPath);
+    }
+
     private const string OutputFullPath = "Use a full folder path, like D:\\SlothBox.";
     private const string InsideWatched = "SlothBox watches this folder. Pick another place for sorted files.";
 

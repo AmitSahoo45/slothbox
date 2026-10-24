@@ -44,12 +44,14 @@ public sealed class IgnoredEndpointTests(PostgresFixture postgres)
         await h.Service<FolderJobs>().RecordFinishedAsync(job, result, stamp, Ct);
     }
 
+    // Each is named as Undo put it back: "(restored)" when its old place was taken (spec 6.6).
     [Fact]
-    public async Task Undone_files_are_listed_newest_first_with_their_names()
+    public async Task Undone_files_are_listed_newest_first_with_the_names_they_came_back_with()
     {
         await using var h = await DashboardHarness.CreateAsync(postgres);
         var older = await h.FileAsync("IMG_2041.jpg", Analyses.JioReceipt);
         var newer = await h.FileAsync("Screenshot_1.jpg", Analyses.Chat);
+        File.WriteAllText(older.OriginalPath, "another photo saved under the same name");
         await UndoAsync(h, older.Id);
         await UndoAsync(h, newer.Id);
 
@@ -57,7 +59,7 @@ public sealed class IgnoredEndpointTests(PostgresFixture postgres)
 
         ignored.Select(item => (item.Sha256, item.FileName, item.Reason)).ShouldBe([
             (newer.Sha256, "Screenshot_1.jpg", "undone"),
-            (older.Sha256, "IMG_2041.jpg", "undone")
+            (older.Sha256, "IMG_2041 (restored).jpg", "undone")
         ]);
         ignored[0].At.ShouldBeGreaterThanOrEqualTo(ignored[1].At);
     }
@@ -75,11 +77,15 @@ public sealed class IgnoredEndpointTests(PostgresFixture postgres)
         await h.Service<IFinishedPaths>().RecordAsync(
             new FinishedPath(other, folderId, FileStamp.Of(other)!.Value), Ct);
         (await h.Service<FolderSweep>().RunAsync(Ct)).ShouldBe(0);
+        var sweeps = h.Service<SweepRequests>();
+        await sweeps.WaitAsync(TimeSpan.Zero, Ct);
 
         using var response = await h.SendAsync(HttpMethod.Delete, $"/api/ignored/{receipt.Sha256}");
 
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
         (await response.ReadAsync<MutationResultDto>()).Success.ShouldBeTrue();
+        // The sweep runs at once instead of in up to five minutes.
+        (await sweeps.WaitAsync(TimeSpan.Zero, Ct)).ShouldBeTrue();
         (await h.GetAsync<List<IgnoredFileDto>>("/api/ignored")).ShouldBeEmpty();
         (await h.Service<IIgnoredHashes>().ContainsAsync(receipt.Sha256, Ct)).ShouldBeFalse();
         (await h.Service<FolderSweep>().RunAsync(Ct)).ShouldBe(1);
@@ -106,6 +112,38 @@ public sealed class IgnoredEndpointTests(PostgresFixture postgres)
         response.StatusCode.ShouldBe(HttpStatusCode.OK);
         (await h.Service<FolderSweep>().RunAsync(Ct)).ShouldBe(1);
         (await QueuedAsync(h)).ShouldBe([photo]);
+    }
+
+    // A different file SlothBox filed from the same place since the undo keeps its record: it is not the undone file.
+    [Fact]
+    public async Task Allow_again_leaves_the_record_of_a_newer_file_at_the_same_path()
+    {
+        await using var h = await DashboardHarness.CreateAsync(postgres);
+        var folderId = await h.Pipeline.AddFolderAsync(FolderMode.Copy);
+        var photo = h.Pipeline.Watched("IMG_2041.jpg", "the first photo");
+        h.Pipeline.Analyzer.Answer = _ => new AnalysisResult.Success(Analyses.Notes);
+        var first = (await FileCopyAsync(h, photo, folderId)).File;
+        await UndoAsync(h, first.Id);
+        File.WriteAllText(photo, "a different photo saved later under the same name");
+        File.SetLastWriteTimeUtc(photo, DateTime.UtcNow.AddMinutes(1));
+        h.Pipeline.Analyzer.Answer = _ => new AnalysisResult.Success(Analyses.Notes with { Title = "later notes" });
+        await FileCopyAsync(h, photo, folderId);
+
+        using var response = await h.SendAsync(HttpMethod.Delete, $"/api/ignored/{first.Sha256}");
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        (await h.Service<IFinishedPaths>().ListAsync(folderId, Ct)).Select(entry => entry.Path).ShouldBe([photo]);
+        (await h.Service<FolderSweep>().RunAsync(Ct)).ShouldBe(0);
+    }
+
+    // A copy-only filing, with the original recorded as finished as the worker does (spec 4.5).
+    private static async Task<PipelineResult.Filed> FileCopyAsync(DashboardHarness h, string path, int folderId)
+    {
+        var job = PipelineHarness.JobFor(path, folderId: folderId);
+        var stamp = FileStamp.Of(path);
+        var result = await h.Pipeline.Pipeline().RunAsync(job, Ct);
+        await h.Service<FolderJobs>().RecordFinishedAsync(job, result, stamp, Ct);
+        return result.ShouldBeOfType<PipelineResult.Filed>();
     }
 
     [Fact]
