@@ -8,9 +8,6 @@ namespace SlothBox.Server.Endpoints;
 // browser. autoStart is the App's Run key; without the App, start at login stays off.
 public sealed class SettingsService(ISettingsStore settings, IAutoStart? autoStart = null)
 {
-    // An hour per file is already generous; the meter sums the seconds as whole numbers (spec 6.8).
-    private const int MaxSeconds = 3600;
-
     public SettingsDto Get()
     {
         var current = settings.Current;
@@ -20,12 +17,13 @@ public sealed class SettingsService(ISettingsStore settings, IAutoStart? autoSta
     // Everything is checked before anything is saved, so a refused change leaves the settings as they were.
     public Outcome<SettingsDto> Update(UpdateSettingsRequest request)
     {
+        // Any whole number of seconds from 0 up, as the contract's int32 allows (spec 7.4.8).
         if (request.Laziness is not { } laziness ||
             new[] { laziness.ReceiptSeconds, laziness.ScreenshotSeconds, laziness.DocumentSeconds, laziness.OtherSeconds }
-                .Any(seconds => seconds is < 0 or > MaxSeconds))
-            return new Outcome<SettingsDto>.Refused($"Use 0 to {MaxSeconds} seconds per file.");
+                .Any(seconds => seconds < 0))
+            return new Outcome<SettingsDto>.Refused("Use whole seconds from 0 up.");
         if (OllamaAddress(request.OllamaUrl) is not { } url)
-            return new Outcome<SettingsDto>.Refused("Use the Ollama address only, like http://127.0.0.1:11436.");
+            return new Outcome<SettingsDto>.Refused("Use an http or https address, like http://127.0.0.1:11436.");
         if (request.StartAtLogin != (autoStart?.IsEnabled ?? false))
         {
             if (autoStart is null)
@@ -45,10 +43,17 @@ public sealed class SettingsService(ISettingsStore settings, IAutoStart? autoSta
         return new Outcome<SettingsDto>.Done(Get());
     }
 
-    // Scheme, host and port only: the Ollama calls add their own paths. Saved without a trailing slash, as the default.
-    private static string? OllamaAddress(string? text) =>
-        Uri.TryCreate(text?.Trim(), UriKind.Absolute, out var uri) && uri.Scheme is "http" or "https" &&
-        uri.UserInfo.Length == 0 && uri.AbsolutePath == "/" && uri.Query.Length == 0 && uri.Fragment.Length == 0
-            ? uri.GetLeftPart(UriPartial.Authority)
-            : null;
+    // The Ollama calls add their own paths (api/chat) to it, so a query, a fragment or a user name could not reach
+    // Ollama. A bare host is saved without a trailing slash, as the default; one with a path (behind a proxy) keeps a
+    // trailing slash, or the calls would replace its last segment.
+    private static string? OllamaAddress(string? text)
+    {
+        if (!Uri.TryCreate(text?.Trim(), UriKind.Absolute, out var uri) || uri.Scheme is not ("http" or "https") ||
+            uri.UserInfo.Length > 0 || uri.Query.Length > 0 || uri.Fragment.Length > 0)
+            return null;
+        if (uri.AbsolutePath == "/")
+            return uri.GetLeftPart(UriPartial.Authority);
+        var path = uri.GetLeftPart(UriPartial.Path);
+        return path.EndsWith('/') ? path : path + "/";
+    }
 }

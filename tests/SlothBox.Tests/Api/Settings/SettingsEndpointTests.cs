@@ -11,8 +11,8 @@ namespace SlothBox.Tests.Api.Settings;
 // The Settings page (spec 7.4.8, 8.2): start at login, the laziness seconds and the Ollama address.
 public sealed class SettingsEndpointTests
 {
-    private const string SecondsRange = "Use 0 to 3600 seconds per file.";
-    private const string AddressOnly = "Use the Ollama address only, like http://127.0.0.1:11436.";
+    private const string WholeSeconds = "Use whole seconds from 0 up.";
+    private const string WebAddress = "Use an http or https address, like http://127.0.0.1:11436.";
 
     private static readonly LazinessSettings Estimates = new(40, 20, 10, 0);
 
@@ -45,36 +45,60 @@ public sealed class SettingsEndpointTests
         (await server.GetAsync<SettingsDto>("/api/settings")).ShouldBe(expected);
     }
 
-    [Theory]
-    [InlineData(-1)]
-    [InlineData(3601)]
-    public async Task Seconds_outside_0_to_3600_are_refused_and_nothing_is_saved(int seconds)
+    [Fact]
+    public async Task Negative_seconds_are_refused_and_nothing_is_saved()
     {
         await using var server = new ApiServer();
 
         using var response = await PutAsync(server, new UpdateSettingsRequest(false,
-            Estimates with { DocumentSeconds = seconds }, "http://127.0.0.1:11436"));
+            Estimates with { DocumentSeconds = -1 }, "http://127.0.0.1:11436"));
 
         response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
-        (await response.ReadAsync<ProblemDetails>()).Title.ShouldBe(SecondsRange);
+        (await response.ReadAsync<ProblemDetails>()).Title.ShouldBe(WholeSeconds);
         server.Settings.Current.Laziness.ShouldBe(new LazinessSettings());
+    }
+
+    // Spec 7.4.8: any whole number of seconds the contract's int32 holds.
+    [Fact]
+    public async Task The_largest_whole_number_of_seconds_is_saved()
+    {
+        await using var server = new ApiServer();
+        var most = new LazinessSettings(int.MaxValue, int.MaxValue, int.MaxValue, int.MaxValue);
+
+        using var response = await PutAsync(server, new UpdateSettingsRequest(false, most, "http://127.0.0.1:11436"));
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        server.Settings.Current.Laziness.ShouldBe(most);
+    }
+
+    [Theory]
+    [InlineData("http://192.168.1.40:8080/ollama", "http://192.168.1.40:8080/ollama/")]
+    [InlineData("https://ollama.local/", "https://ollama.local")]
+    public async Task An_address_behind_a_proxy_path_keeps_its_path(string typed, string saved)
+    {
+        await using var server = new ApiServer();
+
+        using var response = await PutAsync(server, new UpdateSettingsRequest(false, Estimates, typed));
+
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+        server.Settings.Current.Ollama.Url.ShouldBe(saved);
     }
 
     [Theory]
     [InlineData("")]
     [InlineData("127.0.0.1:11436")]
     [InlineData("ftp://127.0.0.1:11436")]
-    [InlineData("http://127.0.0.1:11436/ollama")]
     [InlineData("http://127.0.0.1:11436?model=x")]
+    [InlineData("http://127.0.0.1:11436/#models")]
     [InlineData("http://user:secret@127.0.0.1:11436")]
-    public async Task An_ollama_address_that_is_not_a_plain_web_address_is_refused(string url)
+    public async Task An_ollama_address_the_calls_could_not_use_is_refused(string url)
     {
         await using var server = new ApiServer();
 
         using var response = await PutAsync(server, new UpdateSettingsRequest(false, Estimates, url));
 
         response.StatusCode.ShouldBe(HttpStatusCode.BadRequest);
-        (await response.ReadAsync<ProblemDetails>()).Title.ShouldBe(AddressOnly);
+        (await response.ReadAsync<ProblemDetails>()).Title.ShouldBe(WebAddress);
         server.Settings.Current.ShouldBe(new SlothBoxSettings
             { Phone = new PhoneSettings(Token: "synthetic-phone-token") });
     }
@@ -90,8 +114,8 @@ public sealed class SettingsEndpointTests
             """{"startAtLogin":false,"laziness":{"receiptSeconds":30,"screenshotSeconds":15,"documentSeconds":15,"otherSeconds":5}}""");
 
         (noSeconds.StatusCode, noAddress.StatusCode).ShouldBe((HttpStatusCode.BadRequest, HttpStatusCode.BadRequest));
-        (await noSeconds.ReadAsync<ProblemDetails>()).Title.ShouldBe(SecondsRange);
-        (await noAddress.ReadAsync<ProblemDetails>()).Title.ShouldBe(AddressOnly);
+        (await noSeconds.ReadAsync<ProblemDetails>()).Title.ShouldBe(WholeSeconds);
+        (await noAddress.ReadAsync<ProblemDetails>()).Title.ShouldBe(WebAddress);
     }
 
     [Fact]

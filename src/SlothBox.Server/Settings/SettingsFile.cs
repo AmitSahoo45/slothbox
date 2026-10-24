@@ -36,13 +36,15 @@ public sealed class SettingsFile(string path) : ISettingsStore
         }
     }
 
-    // Setup, the Settings page and New link save through here. A file that cannot be read is reported as on every read,
-    // and stays as it is.
+    // Setup, the Settings page and New link save through here. The file is read again first, so a hand edit made since
+    // it was loaded is kept, and a file that cannot be read is reported, as on every read, and stays as it is. A file
+    // deleted since is written again from what SlothBox has.
     public SlothBoxSettings Update(Func<SlothBoxSettings, SlothBoxSettings> change)
     {
         lock (_gate)
         {
-            var updated = change(_current ??= LoadOrCreate(path));
+            var current = File.Exists(path) || _current is null ? LoadOrCreate(path) : _current;
+            var updated = change(current);
             Save(path, updated);
             return _current = updated;
         }

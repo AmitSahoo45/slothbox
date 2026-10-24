@@ -113,6 +113,24 @@ public sealed class SettingsFileTests : IDisposable
         File.ReadAllText(path).ShouldBe("{ not json");
     }
 
+    // Spec 11: a file broken after it was loaded is reported and left as it is, and a hand edit is kept.
+    [Fact]
+    public void A_change_reads_the_file_again_so_a_later_edit_is_kept_and_a_broken_file_stays()
+    {
+        var path = _temp.PathOf("settings.json");
+        var file = new SettingsFile(path);
+        var token = file.Current.Phone.Token;
+        File.WriteAllText(path, $$"""{ "Pipeline": { "SweepMinutes": 7 }, "Phone": { "Token": "{{token}}" } }""");
+
+        file.Update(settings => settings with { OutputRoot = @"D:\slothbox-test-output" }).Pipeline.SweepMinutes
+            .ShouldBe(7);
+
+        File.WriteAllText(path, "{ not json");
+        Should.Throw<InvalidOperationException>(() =>
+            file.Update(settings => settings with { Laziness = new LazinessSettings(1, 1, 1, 1) }));
+        File.ReadAllText(path).ShouldBe("{ not json");
+    }
+
     [Fact]
     public void New_phone_tokens_are_url_safe_and_differ()
     {

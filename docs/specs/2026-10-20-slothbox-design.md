@@ -1083,7 +1083,7 @@ Seeded on first run. Users can edit, rename or add more on the Categories page (
 - Computed from each file's first filing: `actions` with kind `move` or `copy`, status `done` and no `before` snapshot. Refiles do not count again. Undone files are excluded.
 - **Files filed** counts files that are filed or in Needs review (SlothBox moved them out of the way). Duplicates are counted as caught, not as filed. **Receipts logged** counts filed receipts; their totals are per currency.
 - Days and weeks are the laptop's local time. The bars always show Monday to Sunday of the current week, whatever the range.
-- **Per file:** receipt 30 s, screenshot 15 s, document 15 s, other 5 s. Editable in Settings, 0 to 3600 s each.
+- **Per file:** receipt 30 s, screenshot 15 s, document 15 s, other 5 s. Editable in Settings: any whole number of seconds from 0 up.
 - **Ranges:** today, this week (Monday to Sunday) and all time.
 - **Figures:** files filed, minutes saved, receipts logged with their total amount per currency, and duplicates caught.
 - The formula is shown in the UI ("How we count") and stated in the DEV post.
@@ -1319,7 +1319,7 @@ Three steps, in order. Moving back is allowed until "Finish setup".
 +----------------------------------------------------------------+
 ```
 
-- **Step 1:** "Browse…" opens the native folder dialog. The folder is created if missing, with its `Inbox`. The rules in Section 4.5 apply in reverse: the output folder must be a full path and cannot be a network folder (it holds the watched `Inbox`), a drive root, a system folder, a file, inside or equal to a watched folder, or around one (SlothBox would refile its own files). A cloud folder is allowed. `POST /setup/check-output` answers these rules before anything is saved, also while the database is down.
+- **Step 1:** "Browse…" opens the native folder dialog. The folder is created if missing, with its `Inbox`. The rules in Section 4.5 apply in reverse: the output folder must be a full path and cannot be a network folder (it holds the watched `Inbox`), a drive root, a system folder, a file, inside or equal to a watched folder, or around one (SlothBox would refile its own files). A cloud folder is allowed. `POST /setup/check-output` answers these rules before anything is saved. While the database is down it can check only the path itself, not the watched folders; finishing checks them all again.
 - **Step 2:** "Add folder" behaves as on the Folders page. Existing files are always left in setup.
 - **Step 3:**
   - "Finish setup" is enabled when all three checks pass.
@@ -1578,8 +1578,8 @@ arrive between the check and save or removal.
 |---|---|
 | Appearance | Theme: System / Light / Dark |
 | Startup | "Start SlothBox when I sign in" switch (same setting as the tray) |
-| AI | Ollama address (scheme, host and port only; used from the next call, no restart), both models with status, [Check again]; [Rebuild missing search data] |
-| Laziness meter | Seconds per receipt, screenshot, document, other (0 to 3600 each) |
+| AI | Ollama address (http or https; a query, fragment or user name is refused, and a path behind a proxy is kept with a trailing slash; used from the next call, no restart), both models with status, [Check again]; [Rebuild missing search data] |
+| Laziness meter | Seconds per receipt, screenshot, document, other |
 | Ignored files | Undone files SlothBox will not refile: name, when undone, [Allow again] |
 | Logs | [Open logs folder] |
 | About | Version, repo link |
@@ -1903,7 +1903,7 @@ src/SlothBox.Web/
 | POST | `/folders/{id}/tidy-existing` | Queue the baseline files; 409 while the folder is off or missing |
 | DELETE | `/folders/{id}` | Stop watching |
 | POST | `/system/pick-folder` | Opens the native dialog; returns `{ path }` or `{ path: null }` when cancelled; 409 in headless mode or when the dialog fails |
-| GET, PUT | `/settings` | Theme is UI-only; this covers start at login, laziness seconds, Ollama address. PUT: 400 for seconds outside 0 to 3600 or an address that is not a plain `http(s)://host:port`, 409 when start at login cannot be changed (no App, or Windows refused) |
+| GET, PUT | `/settings` | Theme is UI-only; this covers start at login, laziness seconds, Ollama address. PUT: 400 for negative seconds or an Ollama address the calls could not use (not http or https, or with a query, fragment or user name), 409 when start at login cannot be changed (no App, or Windows refused) |
 | GET, POST | `/setup`, `/setup/complete` | Setup state; finishing setup (output folder, initial folders). 400 with the rule's reason when the output folder or a folder is refused, 409 once setup is finished or while the database is offline (7.4.1) |
 | POST | `/setup/check-output` | Body `{ path }`; whether the output-folder rules (7.4.1) accept it, with the reason when not |
 | GET | `/phone` | Phone URL, QR code as SVG, firewall rule present |
@@ -2069,7 +2069,7 @@ The file is read leniently: comments, trailing commas and any name case are acce
 
 The app adds the password from `SLOTHBOX_DB_PASSWORD` at startup. If the variable is missing, the Database check fails with "Set SLOTHBOX_DB_PASSWORD (see README setup)".
 
-Setup (the output folder), the Settings page (laziness seconds, Ollama address) and "New link" (the phone token) save the file: written beside it, then moved over it, so a crash never leaves half a file. A saved file loses hand-written comments.
+Setup (the output folder), the Settings page (laziness seconds, Ollama address) and "New link" (the phone token) save the file. Each save reads the file again first, so a hand edit made since startup is kept and a file that cannot be read is reported and never overwritten; it is written beside the file, then moved over it, so a crash never leaves half a file. A saved file loses hand-written comments.
 
 ---
 

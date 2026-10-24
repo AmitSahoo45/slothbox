@@ -49,6 +49,22 @@ public sealed class LazinessEndpointTests(PostgresFixture postgres)
         stats.Days.Sum(day => day.Count).ShouldBe(5);
     }
 
+    // Settings accepts any whole number of seconds (spec 7.4.8); the minutes saved must not overflow.
+    [Fact]
+    public async Task The_largest_estimates_add_up_without_overflowing()
+    {
+        await using var h = await DashboardHarness.CreateAsync(postgres);
+        h.Pipeline.Settings.Current = h.Pipeline.Settings.Current with
+        {
+            Laziness = new LazinessSettings(int.MaxValue, int.MaxValue, int.MaxValue, int.MaxValue)
+        };
+        await h.FileAsync("first.jpg", Analyses.Chat with { Title = "first chat" });
+        await h.FileAsync("second.jpg", Analyses.Chat with { Title = "second chat" });
+
+        (await h.GetAsync<LazinessStatsDto>("/api/stats/laziness?range=all")).MinutesSaved
+            .ShouldBe(2L * int.MaxValue / 60.0);
+    }
+
     [Fact]
     public async Task Today_counts_from_local_midnight_and_this_week_from_Monday()
     {
