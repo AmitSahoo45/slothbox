@@ -7,7 +7,7 @@ namespace SlothBox.Server.Endpoints;
 
 // GET /status, and the payload of status.changed (spec 8.2, 8.3).
 public sealed class StatusService(IOllamaStatus gemma, IJobQueue jobs, WorkerState worker, WorkerStats stats,
-    ISettingsStore settings)
+    ISettingsStore settings, DatabasePassword password)
 {
     // GET /status ("Check again", spec 7.4.10): a pause for Gemma ends as soon as Ollama answers with both models.
     public Task<StatusDto> GetAsync(CancellationToken ct) => BuildAsync(liftGemmaPause: true, ct);
@@ -31,12 +31,11 @@ public sealed class StatusService(IOllamaStatus gemma, IJobQueue jobs, WorkerSta
         }
         catch (Exception e) when (e is not OperationCanceledException)
         {
-            database = new ServiceStatusDto(false,
-                DatabaseProblem(Environment.GetEnvironmentVariable(DatabaseConnection.PasswordVariable)));
+            database = new ServiceStatusDto(false, DatabaseProblem(password.Value));
             queue = new QueueChangedEvent(0, 0);
         }
 
-        // Setup is complete once there is an output folder; first-run setup (E17) records it in app_state.
+        // Setup is complete once there is an output folder; first-run setup also records when in app_state.
         return new StatusDto(new ServiceStatusDto(ollama.Reachable, ollama.Message), Model(ollama.Vision),
             Model(ollama.Embedding), database, queue, worker.Paused, settings.Current.OutputRoot.Length > 0,
             stats.AverageSecondsToday, worker.Reason);

@@ -26,6 +26,9 @@ public sealed class PhoneUploadTests : IDisposable
     private sealed class FixedSettings(SlothBoxSettings settings) : ISettingsStore
     {
         public SlothBoxSettings Current => settings;
+
+        public SlothBoxSettings Update(Func<SlothBoxSettings, SlothBoxSettings> change) =>
+            throw new NotSupportedException();
     }
 
     private sealed class RecordingQueue : IJobQueue

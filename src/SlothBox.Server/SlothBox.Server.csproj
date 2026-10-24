@@ -8,6 +8,7 @@
     <ProjectReference Include="../SlothBox.Data/SlothBox.Data.csproj" />
     <PackageReference Include="Microsoft.AspNetCore.OpenApi" />
     <PackageReference Include="Microsoft.Extensions.FileProviders.Embedded" />
+    <PackageReference Include="QRCoder" />
   </ItemGroup>
   <ItemGroup>
     <EmbeddedResource Include="wwwroot/**" />

@@ -129,6 +129,62 @@ public sealed class FolderRulesTests : IDisposable
         }
     }
 
+    // Spec 7.4.1 step 1: the output folder, with the watched-folder rules in reverse.
+    private string? CheckOutput(string path, params WatchedFolder[] watched) =>
+        new FolderRules(_platform).CheckOutput(path, watched);
+
+    [Fact]
+    public void An_ordinary_output_folder_is_accepted_whether_or_not_it_exists_yet()
+    {
+        CheckOutput(Folder("Sorted")).ShouldBeNull();
+        CheckOutput(_temp.PathOf("Not yet", "SlothBox")).ShouldBeNull();
+    }
+
+    [Fact]
+    public void A_cloud_synced_output_folder_is_accepted() =>
+        CheckOutput(Folder("Users", "me", "OneDrive", "SlothBox")).ShouldBeNull();
+
+    [Fact]
+    public void An_output_folder_at_a_drive_root_in_a_system_folder_or_on_a_network_is_refused()
+    {
+        CheckOutput(_platform.DriveRoot).ShouldBe(NotInsideDrive);
+        CheckOutput(Folder("Windows", "SlothBox")).ShouldBe(SystemFolder);
+        CheckOutput(@"\\nas\sorted").ShouldBe("SlothBox can't keep sorted files in a network folder in this version.");
+    }
+
+    [Theory]
+    [InlineData("SlothBox")]
+    [InlineData("D:")]
+    public void An_output_path_that_is_not_a_full_folder_path_is_refused(string path) =>
+        CheckOutput(path).ShouldBe(OutputFullPath);
+
+    [Fact]
+    public void An_output_device_path_is_refused() =>
+        CheckOutput(@"\\?\" + Folder("Sorted")).ShouldBe(OutputFullPath);
+
+    [Fact]
+    public void An_output_folder_inside_equal_to_or_containing_a_watched_folder_is_refused()
+    {
+        var watched = Watched(1, Folder("Users", "me", "Downloads"));
+
+        CheckOutput(watched.Path, watched).ShouldBe(InsideWatched);
+        CheckOutput(Path.Combine(watched.Path, "Sorted"), watched).ShouldBe(InsideWatched);
+        CheckOutput(Folder("Users", "me"), watched).ShouldBe(
+            "This folder contains a folder SlothBox watches, so SlothBox would refile its own files. Pick another place.");
+        CheckOutput(Folder("Users", "me", "Downloads sorted"), watched).ShouldBeNull();
+    }
+
+    [Fact]
+    public void An_output_path_that_is_a_file_is_refused()
+    {
+        var file = _temp.Write("notes.txt", "notes");
+
+        CheckOutput(file).ShouldBe("This is a file, not a folder.");
+    }
+
+    private const string OutputFullPath = "Use a full folder path, like D:\\SlothBox.";
+    private const string InsideWatched = "SlothBox watches this folder. Pick another place for sorted files.";
+
     private static void DenyListing(string folder, bool deny)
     {
         if (OperatingSystem.IsWindows())

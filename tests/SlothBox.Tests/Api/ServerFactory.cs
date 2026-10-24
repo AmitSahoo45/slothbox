@@ -14,6 +14,9 @@ public sealed class ServerFactory : WebApplicationFactory<Server.Program>
     private sealed class DefaultSettings : ISettingsStore
     {
         public SlothBoxSettings Current { get; } = new();
+
+        public SlothBoxSettings Update(Func<SlothBoxSettings, SlothBoxSettings> change) =>
+            throw new NotSupportedException();
     }
 
     private sealed class NoQueue : IJobQueue
