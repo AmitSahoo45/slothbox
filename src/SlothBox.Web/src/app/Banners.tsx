@@ -8,7 +8,10 @@ export function Banners({ status, error, checking, disconnected, busy, onCheck, 
     busy: boolean; onCheck: () => void; onResume: () => void }) {
   const { notify } = useToasts()
   const waiting = Number(status?.queue.waiting ?? 0)
+  const driveFull = status?.pauseReason === 'drive_full'
+  const gemmaOffline = status?.pauseReason === 'gemma_offline'
   const check = <Button busy={checking} onClick={onCheck}>Check again</Button>
+  const resume = <Button busy={busy} onClick={onResume}>Resume</Button>
   const copy = async (command: string) => {
     try { await navigator.clipboard.writeText(command); notify({ message: 'Command copied' }) }
     catch { notify({ message: 'Could not copy the command. Select it and copy it yourself.', tone: 'error' }) }
@@ -20,7 +23,10 @@ export function Banners({ status, error, checking, disconnected, busy, onCheck, 
       {!status.database.ready && <Banner tone="error" action={check}>
         The database is offline. Nothing will move until it's back.
       </Banner>}
-      {!status.gemma.ready && <Banner action={check}>
+      {gemmaOffline && <Banner action={check}>
+        Gemma is offline, {waiting} {waiting === 1 ? 'file' : 'files'} waiting.
+      </Banner>}
+      {!status.gemma.ready && !gemmaOffline && <Banner action={check}>
         Gemma is offline. {waiting} {waiting === 1 ? 'file is' : 'files are'} waiting. Start Docker Desktop and SlothBox will carry on by itself.
       </Banner>}
       {[{ model: status.visionModel, label: 'Gemma' }, { model: status.embeddingModel, label: 'EmbeddingGemma' }]
@@ -30,7 +36,10 @@ export function Banners({ status, error, checking, disconnected, busy, onCheck, 
             <p>{label} isn't installed.</p><code>{command}</code>
           </Banner>
         })}
-      {status.paused && <Banner tone="neutral" action={<Button busy={busy} onClick={onResume}>Resume</Button>}>
+      {driveFull && <Banner tone="error" action={resume}>
+        The output drive is full. SlothBox paused itself. Free some space to continue.
+      </Banner>}
+      {status.paused && !driveFull && !gemmaOffline && <Banner tone="neutral" action={resume}>
         SlothBox is paused. {waiting} {waiting === 1 ? 'file is' : 'files are'} waiting.
       </Banner>}
     </>}

@@ -38,7 +38,7 @@ export function createBatch3Handlers(getStatus: () => Schema['StatusDto'], setSt
       if (!check(body.outputRoot).accepted) return HttpResponse.json({ title: 'Choose an absolute output folder below a drive root.' }, { status: 400 })
       outputRoot = body.outputRoot
       folders = body.folders.map(folder => ({ ...responses.GetFolders[0], ...folder, id: nextId++, enabled: true, isCloud: /cloud/i.test(folder.path), filedCount: 0, baselineCount: 12 }))
-      setStatus({ ...getStatus(), setupComplete: true, paused: body.finishAnyway })
+      setStatus({ ...getStatus(), setupComplete: true, paused: body.finishAnyway, pauseReason: body.finishAnyway ? 'user' : null })
       return HttpResponse.json(setup())
     }),
     http.get('*/api/folders', () => HttpResponse.json(folders)),

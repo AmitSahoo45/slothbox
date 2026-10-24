@@ -6,8 +6,13 @@ import { createBatch2Handlers } from './batch2-handlers'
 import { createBatch3Handlers } from './batch3-handlers'
 import { createSettingsHandlers, type SettingsState } from './batch4-handlers'
 
-export function createBrowserHandlers(options: { setupComplete?: boolean } = {}) {
-  let current: Schema['StatusDto'] = { ...structuredClone(status), setupComplete: options.setupComplete ?? true }
+export function createBrowserHandlers(options: { setupComplete?: boolean; pauseReason?: Schema['PauseReason'] } = {}) {
+  const pauseReason = options.pauseReason ?? null
+  let current: Schema['StatusDto'] = {
+    ...structuredClone(status), setupComplete: options.setupComplete ?? true,
+    paused: pauseReason !== null, pauseReason,
+  }
+  if (pauseReason === 'gemma_offline') current.gemma = { ready: false, message: null }
   const settingsState: SettingsState = { settings: structuredClone(responses.GetSettings), ignored: structuredClone(responses.GetIgnored) }
   const subscribers = new Set<ReadableStreamDefaultController<Uint8Array>>()
   const encoder = new TextEncoder()
@@ -22,7 +27,8 @@ export function createBrowserHandlers(options: { setupComplete?: boolean } = {})
     if (request.headers.get('X-SlothBox') !== '1') {
       return HttpResponse.json({ title: 'Missing X-SlothBox header', status: 403 }, { status: 403 })
     }
-    current = { ...current, paused }
+    // Resume also ends the synthetic Gemma outage.
+    current = { ...current, paused, pauseReason: paused ? 'user' : null, gemma: paused ? current.gemma : { ...status.gemma } }
     for (const subscriber of subscribers) {
       try { subscriber.enqueue(statusEvent()) } catch { subscribers.delete(subscriber) }
     }

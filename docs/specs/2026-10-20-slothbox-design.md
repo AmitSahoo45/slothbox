@@ -1596,6 +1596,7 @@ Opens from the right, 440 px wide, over any page.
 | Condition | Tone | Copy | Action |
 |---|---|---|---|
 | Gemma offline | `sun` | "Gemma is offline. 4 files are waiting. Start Docker Desktop and SlothBox will carry on by itself." | [Check again] |
+| Paused for `gemma_offline` | `sun` | "Gemma is offline, 4 files waiting." | [Check again] |
 | Model missing | `sun` | "EmbeddingGemma isn't installed." + command in mono | [Copy command] |
 | Database offline | `ember` | "The database is offline. Nothing will move until it's back." | [Check again] |
 | Paused | neutral | "SlothBox is paused. 6 files are waiting." | [Resume] |
@@ -1607,9 +1608,19 @@ Opens from the right, 440 px wide, over any page.
 - **Error toasts** stay until dismissed.
 - **Any toast after a move** includes [Undo].
 
-**Track U integration note:** the fixed Track 0 `StatusDto` has no drive-full
-signal. That banner awaits an explicit contract field; the UI does not infer it
-from a free-text service message.
+**Pause reasons:** `StatusDto` and `status.changed` carry an optional nullable
+`pauseReason`. `drive_full` shows the Drive full banner; `gemma_offline` shows
+the Paused for `gemma_offline` banner, worded as in Section 9 with the queued
+count from `queue.waiting`. Both replace the neutral paused banner, and the
+`gemma_offline` banner also replaces the Gemma offline banner to avoid
+duplicates. `user` shows the neutral banner while paused. With null or an
+omitted reason, the reason-specific banner clears and the existing paused and
+service checks apply. Database and missing-model warnings remain independent.
+Reasons are never inferred from free-text service messages.
+
+Status reads and Check again work without SSE messages. The live `/events`
+stream remains silent until E11; these states are verified against the contract
+with MSW fixtures in the meantime.
 
 ### 7.5 Components
 
@@ -1798,6 +1809,10 @@ src/SlothBox.Web/
   session. Category names and counts share the file fixtures; saved estimates
   update the meter, and undo adds a synthetic ignored entry. Reload resets these
   fixtures; the theme preference persists in browser storage.
+- In `dev:mock`, `?mockPause=drive_full` and `?mockPause=gemma_offline` start
+  with the corresponding pause banner; the `gemma_offline` scenario also reports
+  Gemma offline. Pause sets the reason to `user`; Resume clears it to null and
+  ends the synthetic outage. These scenarios use synthetic state only.
 - Known development limitation with pinned MSW 3.0.3: repeated full-page reloads
   can report a ServiceWorker update "Not found" rejection while the previous
   page unregisters its worker. The tested page flows still work; this warning

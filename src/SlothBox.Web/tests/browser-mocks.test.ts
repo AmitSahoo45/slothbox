@@ -13,9 +13,9 @@ test('browser mocks retain Pause and Resume across status reads and enforce the 
   server.use(...createBrowserHandlers())
   expect((await fetch(`${base}/api/pause`, { method: 'POST' })).status).toBe(403)
   await fetch(`${base}/api/pause`, { method: 'POST', headers: { 'X-SlothBox': '1' } })
-  expect(await (await fetch(`${base}/api/status`)).json()).toMatchObject({ paused: true })
+  expect(await (await fetch(`${base}/api/status`)).json()).toMatchObject({ paused: true, pauseReason: 'user' })
   await fetch(`${base}/api/resume`, { method: 'POST', headers: { 'X-SlothBox': '1' } })
-  expect(await (await fetch(`${base}/api/status`)).json()).toMatchObject({ paused: false })
+  expect(await (await fetch(`${base}/api/status`)).json()).toMatchObject({ paused: false, pauseReason: null })
 })
 test('browser SSE stays open and sends a new status when Pause is clicked', async () => {
   server.use(...createBrowserHandlers())
@@ -26,10 +26,16 @@ test('browser SSE stays open and sends a new status when Pause is clicked', asyn
     const first = await reader.read()
     expect(first.done).toBe(false)
     expect(new TextDecoder().decode(first.value)).toContain('"paused":false')
+    expect(new TextDecoder().decode(first.value)).toContain('"pauseReason":null')
     await fetch(`${base}/api/pause`, { method: 'POST', headers: { 'X-SlothBox': '1' } })
     const next = await reader.read()
     expect(next.done).toBe(false)
     expect(new TextDecoder().decode(next.value)).toContain('"paused":true')
+    expect(new TextDecoder().decode(next.value)).toContain('"pauseReason":"user"')
+    await fetch(`${base}/api/resume`, { method: 'POST', headers: { 'X-SlothBox': '1' } })
+    const resumed = new TextDecoder().decode((await reader.read()).value)
+    expect(resumed).toContain('"paused":false')
+    expect(resumed).toContain('"pauseReason":null')
   } finally {
     controller.abort()
     await reader.cancel().catch(() => undefined)
@@ -112,5 +118,17 @@ test('browser folder and setup mutations persist and rotation changes the QR wit
   expect(rotated.url).not.toBe(phone.url)
   expect(rotated.qrSvg).not.toBe(phone.qrSvg)
   await post('setup/complete', { outputRoot: 'D:\\Synthetic-Filed', folders: [], finishAnyway: true })
-  expect(await (await fetch(`${base}/api/status`)).json()).toMatchObject({ paused: true, setupComplete: true })
+  expect(await (await fetch(`${base}/api/status`)).json()).toMatchObject({ paused: true, pauseReason: 'user', setupComplete: true })
+})
+
+test.each([
+  { pauseReason: 'drive_full', gemmaReady: true },
+  { pauseReason: 'gemma_offline', gemmaReady: false },
+] as const)('browser scenario starts paused for $pauseReason and Resume clears it', async ({ pauseReason, gemmaReady }) => {
+  server.use(...createBrowserHandlers({ pauseReason }))
+  expect(await (await fetch(`${base}/api/status`)).json()).toMatchObject({ paused: true, pauseReason, gemma: { ready: gemmaReady } })
+  const resumed = await fetch(`${base}/api/resume`, { method: 'POST', headers: { 'X-SlothBox': '1' } })
+  const cleared = { paused: false, pauseReason: null, gemma: { ready: true } }
+  expect(await resumed.json()).toMatchObject(cleared)
+  expect(await (await fetch(`${base}/api/status`)).json()).toMatchObject(cleared)
 })
