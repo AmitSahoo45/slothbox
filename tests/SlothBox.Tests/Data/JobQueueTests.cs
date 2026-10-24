@@ -1,6 +1,8 @@
 using Microsoft.EntityFrameworkCore;
 using SlothBox.Core;
+using SlothBox.Core.Folders;
 using SlothBox.Data;
+using SlothBox.Data.Folders;
 using SlothBox.Data.Queue;
 
 namespace SlothBox.Tests.Data;
@@ -32,6 +34,27 @@ public sealed class JobQueueTests(PostgresFixture postgres)
         await queue.EnqueueAsync(Seen(@"d:\SLOTHBOX-TEST\Watched\BILL.PDF"), Ct);
 
         (await JobsAsync(db)).ShouldHaveSingleItem().Status.ShouldBe(JobStatus.Queued);
+    }
+
+    // Spec 4.5: the sweep's enqueue checks the finished path in the same statement as the insert.
+    [Fact]
+    public async Task A_file_finished_with_the_same_stamp_is_not_queued_again_but_a_changed_one_is()
+    {
+        await using var db = await postgres.CreateDatabaseAsync(Ct);
+        var folder = await new WatchedFolderRepository(db).SaveAsync(
+            new WatchedFolder(0, @"D:\slothbox-test\watched", "Camera", FolderMode.Copy, true, true), Ct);
+        var stamp = new FileStamp(5, new DateTime(2026, 10, 24, 12, 0, 0, DateTimeKind.Utc));
+        await new FinishedPathStore(db).RecordAsync(new FinishedPath(Photo, folder.Id, stamp), Ct);
+        var queue = new JobQueue(db);
+
+        (await queue.EnqueueUnlessFinishedAsync(Seen(Photo, folderId: folder.Id), stamp, Ct)).ShouldBeFalse();
+        (await JobsAsync(db)).ShouldBeEmpty();
+
+        (await queue.EnqueueUnlessFinishedAsync(Seen(Photo, folderId: folder.Id), stamp with { Size = 6 }, Ct))
+            .ShouldBeTrue();
+        (await queue.EnqueueUnlessFinishedAsync(Seen(Photo, folderId: folder.Id), stamp with { Size = 6 }, Ct))
+            .ShouldBeFalse();
+        (await JobsAsync(db)).ShouldHaveSingleItem().Path.ShouldBe(Photo);
     }
 
     [Fact]

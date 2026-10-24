@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using SlothBox.Core;
+using SlothBox.Core.Folders;
 
 namespace SlothBox.Data.Queue;
 
@@ -15,6 +16,22 @@ public sealed class JobQueue(IDbContextFactory<SlothBoxDbContext> contexts) : IJ
             VALUES ({file.Path}, {DbValue.Of(file.Origin)}, {file.WatchedFolderId}, 'queued', 0, {now}, {now})
             ON CONFLICT (path) WHERE status IN ('queued','processing') DO NOTHING
             """, ct);
+    }
+
+    // One statement: no job while finished_paths has the path with this stamp, or while it has an active job.
+    public async Task<bool> EnqueueUnlessFinishedAsync(IncomingFile file, FileStamp stamp, CancellationToken ct)
+    {
+        await using var db = await contexts.CreateDbContextAsync(ct);
+        var now = DateTimeOffset.UtcNow;
+        var lastWrite = new DateTimeOffset(stamp.LastWriteUtc, TimeSpan.Zero);
+        var added = await db.Database.ExecuteSqlAsync($"""
+            INSERT INTO jobs (path, origin, watched_folder_id, status, attempts, created_at, updated_at)
+            SELECT {file.Path}, {DbValue.Of(file.Origin)}, {file.WatchedFolderId}::integer, 'queued', 0, {now}, {now}
+            WHERE NOT EXISTS (SELECT 1 FROM finished_paths WHERE path = {file.Path}::citext
+                AND size_bytes = {stamp.Size} AND last_write_at = {lastWrite})
+            ON CONFLICT (path) WHERE status IN ('queued','processing') DO NOTHING
+            """, ct);
+        return added > 0;
     }
 
     public async Task<Job?> ClaimNextAsync(CancellationToken ct)

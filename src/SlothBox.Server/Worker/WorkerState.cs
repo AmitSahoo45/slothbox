@@ -33,6 +33,13 @@ public sealed class WorkerState
 
     public event Action? Changed;
 
+    // Set once the worker's start-up (spec 4.3 steps 4 to 7) is done; the watchers and the first sweep wait for it.
+    public void MarkStarted() => _started.TrySetResult();
+
+    public Task WaitUntilStartedAsync(CancellationToken ct) => _started.Task.WaitAsync(ct);
+
+    private readonly TaskCompletionSource _started = NewSource();
+
     // A user's pause outranks the worker's own, and a full drive outranks an offline Gemma: a pause is never
     // downgraded, so the worker cannot lift a pause the user set.
     private static int Rank(PauseReason reason) => reason switch

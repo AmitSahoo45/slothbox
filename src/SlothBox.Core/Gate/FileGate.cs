@@ -70,6 +70,12 @@ public sealed class FileGate(
         return filed is null ? new GateResult.Ready(sha256) : new GateResult.Duplicate(filed.Id, sha256);
     }
 
+    // Spec 5.3 "Always skipped", from what a folder listing already knows: the name and the attributes. The sweep
+    // and the folder baseline use it so they never queue a file the gate would only skip.
+    public static bool IsAlwaysSkipped(FileInfo info) =>
+        IsTemporary(info.Name) || info.Attributes.HasFlag(FileAttributes.Hidden) ||
+        info.Attributes.HasFlag(FileAttributes.System);
+
     private static bool IsTemporary(string name) =>
         name.StartsWith("~$", StringComparison.Ordinal) || ShellFiles.Contains(name) ||
         TemporaryExtensions.Contains(Path.GetExtension(name));

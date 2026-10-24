@@ -21,6 +21,10 @@ internal sealed class FakeWatchedFolders : IWatchedFolderRepository
     public Task SetBaselineAsync(int folderId, IReadOnlyList<string> paths, CancellationToken ct) =>
         throw new NotSupportedException();
     public Task ClearBaselineAsync(int folderId, CancellationToken ct) => throw new NotSupportedException();
+    public Task<WatchedFolder> AddAsync(WatchedFolder folder, IReadOnlyList<string> baseline, CancellationToken ct) =>
+        throw new NotSupportedException();
+    public Task<WatchedFolder?> RelocateAsync(int id, string path, bool isCloud, FolderMode mode,
+        IReadOnlyList<string> baseline, CancellationToken ct) => throw new NotSupportedException();
 }
 
 internal sealed class FakeIgnoredHashes : IIgnoredHashes

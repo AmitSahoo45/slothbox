@@ -30,6 +30,8 @@ public sealed class StatusEndpointTests : IDisposable
             Failure is { } failure ? Task.FromException<QueueCounts>(failure) : Task.FromResult(Counts);
 
         public Task EnqueueAsync(IncomingFile file, CancellationToken ct) => throw new NotSupportedException();
+        public Task<bool> EnqueueUnlessFinishedAsync(IncomingFile file, Core.Folders.FileStamp stamp,
+            CancellationToken ct) => throw new NotSupportedException();
         public Task<Job?> ClaimNextAsync(CancellationToken ct) => throw new NotSupportedException();
         public Task CompleteAsync(long jobId, JobOutcome outcome, CancellationToken ct) => throw new NotSupportedException();
         public Task<int> RequeueInterruptedAsync(CancellationToken ct) => throw new NotSupportedException();

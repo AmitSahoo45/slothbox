@@ -515,6 +515,37 @@ namespace SlothBox.Data.Migrations
                         });
                 });
 
+            modelBuilder.Entity("SlothBox.Data.StoredFinishedPath", b =>
+                {
+                    b.Property<string>("Path")
+                        .HasColumnType("citext")
+                        .HasColumnName("path");
+
+                    b.Property<DateTimeOffset>("FinishedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("finished_at");
+
+                    b.Property<int?>("FolderId")
+                        .HasColumnType("integer")
+                        .HasColumnName("folder_id");
+
+                    b.Property<DateTimeOffset>("LastWriteAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_write_at");
+
+                    b.Property<long>("SizeBytes")
+                        .HasColumnType("bigint")
+                        .HasColumnName("size_bytes");
+
+                    b.HasKey("Path")
+                        .HasName("pk_finished_paths");
+
+                    b.HasIndex("FolderId")
+                        .HasDatabaseName("ix_finished_paths_folder_id");
+
+                    b.ToTable("finished_paths", (string)null);
+                });
+
             modelBuilder.Entity("SlothBox.Data.StoredIgnoredHash", b =>
                 {
                     b.Property<string>("Sha256")
@@ -731,6 +762,15 @@ namespace SlothBox.Data.Migrations
                         .HasForeignKey("WatchedFolderId")
                         .OnDelete(DeleteBehavior.SetNull)
                         .HasConstraintName("fk_files_watched_folder");
+                });
+
+            modelBuilder.Entity("SlothBox.Data.StoredFinishedPath", b =>
+                {
+                    b.HasOne("SlothBox.Data.StoredWatchedFolder", null)
+                        .WithMany()
+                        .HasForeignKey("FolderId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .HasConstraintName("fk_finished_paths_folder");
                 });
 
             modelBuilder.Entity("SlothBox.Data.StoredJob", b =>

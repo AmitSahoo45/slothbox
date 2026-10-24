@@ -1,3 +1,5 @@
+using SlothBox.Core.Folders;
+
 namespace SlothBox.Core;
 
 public interface IFolderRules
@@ -11,14 +13,6 @@ public interface IPlatformPaths
     IReadOnlyList<string> CloudRoots { get; }
     bool IsDriveRoot(string path);
     bool IsNetworkPath(string path);
-}
-
-public interface IFolderWatcher
-{
-    IAsyncEnumerable<IncomingFile> WatchAsync(CancellationToken ct);
-    Task AddAsync(WatchedFolder folder, CancellationToken ct);
-    Task RemoveAsync(int folderId, CancellationToken ct);
-    IReadOnlyList<IncomingFile> Sweep();
 }
 
 public interface IFileGate
@@ -81,6 +75,9 @@ public interface IEmbedder
 public interface IJobQueue
 {
     Task EnqueueAsync(IncomingFile file, CancellationToken ct);
+    // The sweep's enqueue (spec 4.5): nothing is queued while the path is a finished path with this stamp, checked in
+    // the same statement, so a job that ends while the sweep runs is not queued again. True when a job was added.
+    Task<bool> EnqueueUnlessFinishedAsync(IncomingFile file, FileStamp stamp, CancellationToken ct);
     Task<Job?> ClaimNextAsync(CancellationToken ct);
     Task CompleteAsync(long jobId, JobOutcome outcome, CancellationToken ct);
     // Startup: jobs left processing by a crashed run return to queued (spec 5.7). Returns how many.
@@ -141,8 +138,10 @@ public interface IFileRepository
 public interface ICategoryRepository
 {
     Task<IReadOnlyList<Category>> ListAsync(CancellationToken ct);
+    // Adds a category with no id, or saves a changed one. The editing rules (A22) are the caller's.
     Task<Category> SaveAsync(Category category, CancellationToken ct);
-    Task DeleteEmptyAsync(int id, CancellationToken ct);
+    // Removes a user category nothing refers to; false, with nothing removed, while anything does.
+    Task<bool> DeleteEmptyAsync(int id, CancellationToken ct);
 }
 
 public interface IReceiptRepository
@@ -181,11 +180,17 @@ public interface IWatchedFolderRepository
 {
     Task<IReadOnlyList<WatchedFolder>> ListAsync(CancellationToken ct);
     Task<WatchedFolder> SaveAsync(WatchedFolder folder, CancellationToken ct);
+    // A new folder and its baseline in one transaction: no sweep can see the folder without its baseline (4.5).
+    Task<WatchedFolder> AddAsync(WatchedFolder folder, IReadOnlyList<string> baseline, CancellationToken ct);
     Task RemoveAsync(int id, CancellationToken ct);
     Task<IReadOnlyList<string>> GetBaselineAsync(int folderId, CancellationToken ct);
     Task<bool> IsInBaselineAsync(int folderId, string path, CancellationToken ct);
     Task SetBaselineAsync(int folderId, IReadOnlyList<string> paths, CancellationToken ct);
     Task ClearBaselineAsync(int folderId, CancellationToken ct);
+    // Locate (spec 4.5): the folder moves to a new path with a new baseline; its finished paths follow by file name.
+    // Null when the folder no longer exists.
+    Task<WatchedFolder?> RelocateAsync(int id, string path, bool isCloud, FolderMode mode,
+        IReadOnlyList<string> baseline, CancellationToken ct);
 }
 
 // %LOCALAPPDATA%\SlothBox\settings.json (spec 11), created with defaults and a new phone token on first use.

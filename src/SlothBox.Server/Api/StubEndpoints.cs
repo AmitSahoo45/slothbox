@@ -12,20 +12,9 @@ internal static class StubEndpoints
         var api = app.MapGroup("/api").WithTags("Dashboard");
         Document<SearchResultDto>(api.MapGet("/search", SearchEndpoints.Search)
             .ProducesProblem(StatusCodes.Status400BadRequest), "Search");
-        Document<ReceiptsDto>(api.MapGet("/receipts", (string? month) => NotImplemented()), "GetReceipts");
-        Binary(api.MapGet("/receipts/export.csv", (string? month) => NotImplemented()), "ExportReceipts", "text/csv");
-        Document<IReadOnlyList<CategoryDto>>(api.MapGet("/categories", NotImplemented), "GetCategories");
-        Document<CategoryDto>(api.MapPost("/categories", (CreateCategoryRequest request) => NotImplemented()), "CreateCategory");
-        Document<CategoryDto>(api.MapPut("/categories/{id:int}",
-            (int id, UpdateCategoryRequest request) => NotImplemented()), "UpdateCategory");
-        Document<MutationResultDto>(api.MapDelete("/categories/{id:int}", (int id) => NotImplemented()), "DeleteCategory");
-        Document<IReadOnlyList<FolderDto>>(api.MapGet("/folders", NotImplemented), "GetFolders");
-        Document<FolderCheckDto>(api.MapPost("/folders/check", (CheckFolderRequest request) => NotImplemented()), "CheckFolder");
-        Document<FolderDto>(api.MapPost("/folders", (CreateFolderRequest request) => NotImplemented()), "CreateFolder");
-        Document<FolderDto>(api.MapPatch("/folders/{id:int}",
-            (int id, UpdateFolderRequest request) => NotImplemented()), "UpdateFolder");
-        Document<TidyResultDto>(api.MapPost("/folders/{id:int}/tidy-existing", (int id) => NotImplemented()), "TidyExisting");
-        Document<MutationResultDto>(api.MapDelete("/folders/{id:int}", (int id) => NotImplemented()), "DeleteFolder");
+        Endpoints.ReceiptEndpoints.Map(api);
+        Endpoints.CategoryEndpoints.Map(api);
+        Endpoints.FolderEndpoints.Map(api);
         Document<PickFolderResultDto>(api.MapPost("/system/pick-folder", NotImplemented), "PickFolder");
         Document<SettingsDto>(api.MapGet("/settings", NotImplemented), "GetSettings");
         Document<SettingsDto>(api.MapPut("/settings", (UpdateSettingsRequest request) => NotImplemented()), "UpdateSettings");
@@ -36,7 +25,6 @@ internal static class StubEndpoints
         Document<IReadOnlyList<IgnoredFileDto>>(api.MapGet("/ignored", NotImplemented), "GetIgnored");
         Document<MutationResultDto>(api.MapDelete("/ignored/{sha256}", (string sha256) => NotImplemented()), "AllowIgnored");
         Document<RebuildResultDto>(api.MapPost("/search-data/rebuild", SearchEndpoints.Rebuild), "RebuildSearchData");
-
     }
 
     internal static RouteHandlerBuilder Document<T>(RouteHandlerBuilder route, string name) =>

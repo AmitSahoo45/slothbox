@@ -42,20 +42,6 @@ public sealed class EndpointsTests(ServerFactory factory) : IClassFixture<Server
         }
     }
 
-    [Theory]
-    [InlineData("PATCH", "/api/folders/1", """{"enabled":false}""")]
-    [InlineData("POST", "/api/folders", """{"path":"D:\\slothbox-test","mode":"copy","tidyExisting":false}""")]
-    public async Task Optional_request_fields_can_be_omitted(string method, string path, string body)
-    {
-        using var client = factory.DashboardClient();
-        using var request = new HttpRequestMessage(new HttpMethod(method), path)
-        {
-            Content = new StringContent(body, Encoding.UTF8, "application/json")
-        };
-        using var response = await client.SendAsync(request, TestContext.Current.CancellationToken);
-        response.StatusCode.ShouldBe(HttpStatusCode.NotImplemented);
-    }
-
     [Fact]
     public async Task Status_carries_why_the_worker_is_paused()
     {

@@ -10,6 +10,7 @@ public sealed class SlothBoxDbContext(DbContextOptions<SlothBoxDbContext> option
     public DbSet<StoredCategory> Categories => Set<StoredCategory>();
     public DbSet<StoredWatchedFolder> WatchedFolders => Set<StoredWatchedFolder>();
     public DbSet<FolderBaseline> FolderBaselines => Set<FolderBaseline>();
+    public DbSet<StoredFinishedPath> FinishedPaths => Set<StoredFinishedPath>();
     public DbSet<StoredFile> Files => Set<StoredFile>();
     public DbSet<StoredReceipt> Receipts => Set<StoredReceipt>();
     public DbSet<StoredAction> Actions => Set<StoredAction>();
@@ -44,6 +45,15 @@ public sealed class SlothBoxDbContext(DbContextOptions<SlothBoxDbContext> option
         baseline.Property(x => x.Path).HasColumnType("citext");
         baseline.HasOne<StoredWatchedFolder>().WithMany().HasForeignKey(x => x.FolderId)
             .OnDelete(DeleteBehavior.Cascade).HasConstraintName("fk_folder_baseline_folder");
+
+        // Inbox entries have no folder; a removed folder takes its entries with it.
+        var finished = model.Entity<StoredFinishedPath>();
+        finished.ToTable("finished_paths");
+        finished.HasKey(x => x.Path).HasName("pk_finished_paths");
+        finished.Property(x => x.Path).HasColumnType("citext");
+        finished.HasIndex(x => x.FolderId).HasDatabaseName("ix_finished_paths_folder_id");
+        finished.HasOne<StoredWatchedFolder>().WithMany().HasForeignKey(x => x.FolderId)
+            .OnDelete(DeleteBehavior.Cascade).HasConstraintName("fk_finished_paths_folder");
 
         var files = model.Entity<StoredFile>();
         files.ToTable("files", table =>
