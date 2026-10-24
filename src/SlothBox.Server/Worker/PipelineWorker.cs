@@ -1,10 +1,12 @@
 using System.Diagnostics;
 using Npgsql;
 using SlothBox.Core;
+using SlothBox.Core.Folders;
 using SlothBox.Core.Pipeline;
 using SlothBox.Server.Api;
 using SlothBox.Server.Endpoints;
 using SlothBox.Server.Events;
+using SlothBox.Server.Watching;
 
 namespace SlothBox.Server.Worker;
 
@@ -21,7 +23,8 @@ public sealed class PipelineWorker(
     WorkerStats stats,
     ServerEvents events,
     ILogger<PipelineWorker> log,
-    WorkerTiming? timing = null) : BackgroundService
+    WorkerTiming? timing = null,
+    FolderJobs? folderJobs = null) : BackgroundService
 {
     private readonly WorkerTiming _timing = timing ?? WorkerTiming.Default;
 
@@ -46,6 +49,7 @@ public sealed class PipelineWorker(
                     {
                         await StartUpAsync(stoppingToken);
                         started = true;
+                        state.MarkStarted();
                     }
                     await StepAsync(stoppingToken);
                 }
@@ -142,6 +146,8 @@ public sealed class PipelineWorker(
         var job = await jobs.ClaimNextAsync(ct);
         if (job is null)
             return null;
+        // How the file looked before the job: if it is still like that afterwards, it stayed put (spec 4.5).
+        var seen = FileStamp.Of(job.File.Path);
         PipelineResult result;
         var watch = Stopwatch.StartNew();
         try
@@ -160,12 +166,18 @@ public sealed class PipelineWorker(
             log.LogError(e, "Job {JobId} for {Path} failed.", job.Id, job.File.Path);
             result = new PipelineResult.Failed(Guid.Empty, e.Message, null);
         }
-        await FinishAsync(job, result, ct);
+        // While the job still holds its path in the queue (spec 4.5).
+        if (folderJobs is not null)
+            await folderJobs.RecordFinishedAsync(job, result, seen, ct);
+        if (await FinishAsync(job, result, ct))
+            folderJobs?.JobOver(job);
         return result;
     }
 
-    private async Task FinishAsync(Job job, PipelineResult result, CancellationToken ct)
+    // False while the job will run again: a locked file waiting for its retry, or Gemma offline.
+    private async Task<bool> FinishAsync(Job job, PipelineResult result, CancellationToken ct)
     {
+        var over = true;
         switch (result)
         {
             case PipelineResult.Filed filed:
@@ -183,7 +195,7 @@ public sealed class PipelineWorker(
                 await jobs.CompleteAsync(job.Id, new JobOutcome(JobStatus.Skipped, Error: skipped.Reason), ct);
                 break;
             case PipelineResult.NotReady:
-                await DeferAsync(job, ct);
+                over = await DeferAsync(job, ct);
                 break;
             case PipelineResult.Failed failed:
                 _lockedSince.Remove(job.File.Path);
@@ -196,15 +208,17 @@ public sealed class PipelineWorker(
                 // Nothing was written: the job goes back to the queue and waits for Gemma.
                 await jobs.CompleteAsync(job.Id, new JobOutcome(JobStatus.Queued, Error: offline.Error), ct);
                 state.Pause(PauseReason.GemmaOffline);
+                over = false;
                 break;
         }
         var counts = await jobs.CountsAsync(ct);
         events.Publish(new ServerEvent("queue.changed", new QueueChangedEvent(counts.Waiting, counts.Processing)));
+        return over;
     }
 
     // A locked or still-changing file is tried again after LockRetry, for up to LockRetryMinutes (spec 5.1 step 2);
-    // after that it is left for the next sweep.
-    private async Task DeferAsync(Job job, CancellationToken ct)
+    // after that it is left for the next sweep. True when it is left.
+    private async Task<bool> DeferAsync(Job job, CancellationToken ct)
     {
         var path = job.File.Path;
         var now = DateTimeOffset.UtcNow;
@@ -216,11 +230,12 @@ public sealed class PipelineWorker(
             _lockedSince.Remove(path);
             await jobs.CompleteAsync(job.Id, new JobOutcome(JobStatus.Skipped,
                 Error: $"Still locked after {window.TotalMinutes:0} minutes; left for the next sweep."), ct);
-            return;
+            return true;
         }
         await jobs.CompleteAsync(job.Id, new JobOutcome(JobStatus.Skipped, Error: "Not ready yet; trying again shortly."),
             ct);
         _retries.Add((now + _timing.LockRetry, job.File));
+        return false;
     }
 
     private async Task EnqueueDueRetriesAsync(CancellationToken ct)

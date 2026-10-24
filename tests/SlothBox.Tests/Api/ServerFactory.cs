@@ -19,6 +19,8 @@ public sealed class ServerFactory : WebApplicationFactory<Server.Program>
     private sealed class NoQueue : IJobQueue
     {
         public Task EnqueueAsync(IncomingFile file, CancellationToken ct) => Task.CompletedTask;
+        public Task<bool> EnqueueUnlessFinishedAsync(IncomingFile file, Core.Folders.FileStamp stamp,
+            CancellationToken ct) => Task.FromResult(false);
         public Task<Job?> ClaimNextAsync(CancellationToken ct) => Task.FromResult<Job?>(null);
         public Task CompleteAsync(long jobId, JobOutcome outcome, CancellationToken ct) => Task.CompletedTask;
         public Task<int> RequeueInterruptedAsync(CancellationToken ct) => Task.FromResult(0);

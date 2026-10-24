@@ -1068,6 +1068,7 @@ export interface components {
             enabled?: null | boolean;
             mode?: null | components["schemas"]["FolderMode"];
             label?: null | string;
+            path?: null | string;
         };
         UpdateSettingsRequest: {
             startAtLogin: boolean;
@@ -1924,8 +1925,8 @@ export interface operations {
                     "application/json": components["schemas"]["ReceiptsDto"];
                 };
             };
-            /** @description Not Implemented */
-            501: {
+            /** @description Bad Request */
+            400: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1955,8 +1956,8 @@ export interface operations {
                     "text/csv": string;
                 };
             };
-            /** @description Not Implemented */
-            501: {
+            /** @description Bad Request */
+            400: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1984,15 +1985,6 @@ export interface operations {
                     "application/json": components["schemas"]["CategoryDto"][];
                 };
             };
-            /** @description Not Implemented */
-            501: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ProblemDetails"];
-                };
-            };
         };
     };
     CreateCategory: {
@@ -2017,8 +2009,17 @@ export interface operations {
                     "application/json": components["schemas"]["CategoryDto"];
                 };
             };
-            /** @description Not Implemented */
-            501: {
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Conflict */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2052,8 +2053,26 @@ export interface operations {
                     "application/json": components["schemas"]["CategoryDto"];
                 };
             };
-            /** @description Not Implemented */
-            501: {
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Conflict */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2083,8 +2102,17 @@ export interface operations {
                     "application/json": components["schemas"]["MutationResultDto"];
                 };
             };
-            /** @description Not Implemented */
-            501: {
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Conflict */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2112,15 +2140,6 @@ export interface operations {
                     "application/json": components["schemas"]["FolderDto"][];
                 };
             };
-            /** @description Not Implemented */
-            501: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ProblemDetails"];
-                };
-            };
         };
     };
     CreateFolder: {
@@ -2145,8 +2164,8 @@ export interface operations {
                     "application/json": components["schemas"]["FolderDto"];
                 };
             };
-            /** @description Not Implemented */
-            501: {
+            /** @description Bad Request */
+            400: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2178,15 +2197,6 @@ export interface operations {
                     "application/json": components["schemas"]["FolderCheckDto"];
                 };
             };
-            /** @description Not Implemented */
-            501: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ProblemDetails"];
-                };
-            };
         };
     };
     DeleteFolder: {
@@ -2209,8 +2219,8 @@ export interface operations {
                     "application/json": components["schemas"]["MutationResultDto"];
                 };
             };
-            /** @description Not Implemented */
-            501: {
+            /** @description Not Found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2244,8 +2254,26 @@ export interface operations {
                     "application/json": components["schemas"]["FolderDto"];
                 };
             };
-            /** @description Not Implemented */
-            501: {
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Conflict */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2275,8 +2303,17 @@ export interface operations {
                     "application/json": components["schemas"]["TidyResultDto"];
                 };
             };
-            /** @description Not Implemented */
-            501: {
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Conflict */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

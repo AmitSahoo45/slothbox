@@ -72,7 +72,9 @@ public sealed record CreateCategoryRequest(FileKind Type, string Name, string De
 public sealed record UpdateCategoryRequest(string Name, string Description, string? Folder);
 public sealed record CheckFolderRequest(string Path);
 public sealed record CreateFolderRequest(string Path, FolderMode Mode, bool TidyExisting, string? Label = null);
-public sealed record UpdateFolderRequest(bool? Enabled = null, FolderMode? Mode = null, string? Label = null);
+// Path is Locate (spec 4.5): the folder's new place after it was renamed or moved.
+public sealed record UpdateFolderRequest(bool? Enabled = null, FolderMode? Mode = null, string? Label = null,
+    string? Path = null);
 public sealed record UpdateSettingsRequest(bool StartAtLogin, LazinessSettings Laziness, string OllamaUrl);
 public sealed record InitialFolderDto(string Path, string Label, FolderMode Mode);
 public sealed record CompleteSetupRequest(string OutputRoot, IReadOnlyList<InitialFolderDto> Folders, bool FinishAnyway);

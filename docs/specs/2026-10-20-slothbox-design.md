@@ -360,9 +360,9 @@ Inputs are a list the user manages on the Folders page (Section 7.4.6).
 - **Cloud:** `Dropbox (Work)` and similar team folders count as Dropbox. Google Drive for desktop's `My Drive` and `Shared drives` folders count as Google Drive.
 
 **Existing files (D25)**
-- When a folder is added, SlothBox records every file path already in it as the folder's baseline (A17).
+- When a folder is added, SlothBox records every file path already at its top level as the folder's baseline (A17), leaving out files the gate always skips (5.3). The folder and its baseline are saved together, so no sweep sees the folder without its baseline. A folder whose files cannot be listed is not added.
 - The sweep and the watcher skip baseline paths for good, even if those files are later edited.
-- "Tidy them now" (on the confirm dialog, or later on the folder's row) queues the baseline files and clears the baseline. The batch can be undone with "Undo since".
+- "Tidy them now" (on the confirm dialog, or later on the folder's row) queues the baseline files still there and clears the baseline. Progress reaches the page as `folder.tidy-progress` as each file's job ends. A switched-off folder must be switched on first, because its jobs would be skipped. The batch can be undone with "Undo since".
 - First-run setup always leaves existing files.
 
 **Phone uploads**
@@ -370,11 +370,13 @@ Inputs are a list the user manages on the Folders page (Section 7.4.6).
 - It is always watched while the phone page is on. It is the one watched folder inside the output folder.
 
 **Safety sweep**
-- Every 5 min, every enabled folder is rescanned (baseline skipped). This catches files the Windows watcher missed.
+- Every 5 min, every enabled folder and the Inbox are listed again, top level only, as the watchers see them (baseline skipped). This catches files the Windows watcher missed. It also runs at once when a watcher overflows or fails, and when a folder is added, switched, located or removed.
+- **Finished paths:** when a job files a file and leaves it where it was, unchanged (a copy-only original), or skips it for its ignored hash (an undone file), SlothBox records the path with the file's size and last-write time (`finished_paths`, 6.2) before the job is marked done. The sweep passes over such a file while both are unchanged, and its queue insert checks the record in the same statement, so a job that ends while a sweep runs is not queued again. The sweep reads only the folder listing and never opens the file, so cloud-only OneDrive files are not downloaded. A changed file is checked again, and an entry is dropped once its file is gone. A listing that fails (no access, a cloud provider error) changes nothing. A locked file, a failed job or one waiting for Gemma is not recorded, so the next sweep tries it again; temporary, hidden, system and baseline files are never queued by the sweep, so their skips need no record.
 
 **Folder problems**
-- If a watched folder is deleted or renamed, its watcher stops.
+- If a watched folder is deleted or renamed, its watcher stops. Once the folder is back at its path, the next sweep watches it again.
 - Its row on the Folders page shows "Folder not found", with Locate and Remove actions.
+- **Locate** points a missing folder at its new path (`PATCH /folders/{id}` with `path`); a folder still at its path keeps it (409). The new path goes through the rules above, and a cloud path turns the folder copy-only. Files already at the new place become its baseline, as when a folder is added with "Leave them", except the ones SlothBox finished at the old place (same name, size and last-write time), which keep their finished paths. **Remove** stops watching; files already filed stay where they are, and jobs still queued from the folder are skipped (5.1).
 
 ### 4.6 Code modules and repo layout
 
@@ -460,13 +462,14 @@ public interface IPlatformPaths
     bool IsNetworkPath(string path);
 }
 
-// Watches the enabled folders and the Inbox; folders can be added or removed while running. Implemented in Server.
-public interface IFolderWatcher
+// Files that stayed in their folder after their last job, with the size and last-write time they had (4.5).
+// The watchers and the sweep themselves live in Server (Watching): the sweep needs the baseline and these paths
+// from the database, so it is not a Core interface.
+public interface IFinishedPaths
 {
-    IAsyncEnumerable<IncomingFile> WatchAsync(CancellationToken ct);
-    Task AddAsync(WatchedFolder folder, CancellationToken ct);
-    Task RemoveAsync(int folderId, CancellationToken ct);
-    IReadOnlyList<IncomingFile> Sweep();   // skips baseline paths
+    Task RecordAsync(FinishedPath entry, CancellationToken ct);
+    Task<IReadOnlyList<FinishedPath>> ListAsync(int? folderId, CancellationToken ct);   // null: the Inbox
+    Task ForgetAsync(IReadOnlyCollection<string> paths, CancellationToken ct);
 }
 
 // Step 2: stable? temp? baseline? ignored? duplicate? Returns Ready(sha256), NotReady, Skip(reason) or Duplicate(existingFileId).
@@ -753,7 +756,7 @@ Gemma never writes the file name. It returns fields, and `INameBuilder` builds t
 | Model | `embeddinggemma`, 768 dimensions, on the CPU (`num_gpu: 0`) so Gemma has the GPU to itself. Ollama returns unit-length vectors, so cosine distance is used. |
 | Document input | `title: {title} \| text: {category}. {caption} {first 2,000 characters of text}`. With no title: `title: none \| text: ...` (the literal lowercase word `none`, no quotes). |
 | Query input | `task: search result \| query: {user query}` |
-| Timeout | 30 s, one retry. On failure the file stays filed with no vector; Settings has "Rebuild missing search data". |
+| Timeout | 30 s, one retry. On failure the file stays filed with no vector; Settings has "Rebuild missing search data". Any embedding error counts as a failure here (Ollama down, an error status, an unusable answer), not only a timeout; only shutdown stops the job. |
 | Model change | The vector column is fixed at 768 dimensions. A different embedding model requires re-embedding all files. |
 
 The document and query prefixes match the EmbeddingGemma model card (verified 20 Oct 2026, A9). SlothBox adds them itself; Ollama adds none. Use `POST /api/embed`.
@@ -770,7 +773,7 @@ The document and query prefixes match the EmbeddingGemma model card (verified 20
 - **Average seconds per file today** (status block, Section 12): the time from claiming a job to the file landing in the output folder (filed, Needs review or Duplicates), over the files since local midnight. Kept in memory, so it starts again with the app.
 - **Startup:** the worker applies the migrations (retrying every 30 s while Postgres is down), waits for first-run setup, runs crash recovery (6.5), returns interrupted jobs to the queue, then starts claiming. While Postgres is down at runtime, nothing moves; the job it interrupted returns to the queue once it is back.
 - **Outcomes:** a job ends `done` (filed or a duplicate), `review`, `skipped` (the gate skipped it, or it was locked) or `failed` (the move failed; the file row stays and a retry reuses it). The worker publishes `file.filed`, `file.review`, `file.duplicate` and `queue.changed` as each job ends.
-- **Speed target:** under 10 s per file. This is an estimate; it is measured on day one with `SlothBox.Eval`.
+- **Speed target:** under 10 s per file. This is an estimate; it is measured by hand on day one: a few files through the phone page or a watched folder, the status block's average seconds per file today, and `ollama ps` for the GPU share. The `SlothBox.Eval` runner (E19) is cut for the code freeze.
 - **VRAM:** `gemma4:e4b` is 6.6 GB in the Ollama library (Oct 2026), so it gets the GPU to itself. `embeddinggemma` (622 MB) runs on the CPU (`num_gpu: 0`).
 - **Day-one rule:** if `ollama ps` shows less than 100% GPU for `gemma4:e4b`, or the median time per file is over 10 s, switch to `gemma4:e4b-it-qat` (6.1 GB), then `gemma4:e2b` (4.6 GB). Record the result here.
 - **Models (T0.10, 21 Oct 2026):** `ollama list`: `gemma4:e4b` (`dc35e8d9c606`, 6.6 GB) and `embeddinggemma:latest` (`85462619ee72`, 621 MB), both downloaded. `ollama ps`: empty, no model loaded yet.
@@ -806,6 +809,7 @@ erDiagram
     CATEGORIES ||--o{ FILES : groups
     WATCHED_FOLDERS ||--o{ FILES : "came from"
     WATCHED_FOLDERS ||--o{ FOLDER_BASELINE : "existing files"
+    WATCHED_FOLDERS ||--o{ FINISHED_PATHS : "files left in place"
     FILES ||--o| RECEIPTS : "ledger row"
     FILES ||--o{ ACTIONS : "moves and undos"
     FILES ||--o{ FILES : "duplicate of"
@@ -830,6 +834,13 @@ erDiagram
     FOLDER_BASELINE {
         int folder_id PK
         string path PK
+    }
+    FINISHED_PATHS {
+        string path PK
+        int folder_id FK
+        bigint size_bytes
+        timestamptz last_write_at
+        timestamptz finished_at
     }
     FILES {
         uuid id PK
@@ -921,6 +932,7 @@ erDiagram
 - `categories`: unique (`type`, `name`). Receipt, screenshot and document each have one `Other` row with `is_system = true`. The `other` type has only the four fixed system rows Installers, Archives, Media and Misc (6.7). There are 19 seed categories, 7 system; system rows cannot be deleted.
 - `watched_folders.path`: unique (case-insensitive, normalised full path).
 - `folder_baseline`: primary key (`folder_id`, `path`).
+- `finished_paths` (4.5): primary key `path` (case-insensitive); `folder_id` is null for the Inbox, and a folder's rows go with it. `last_write_at` keeps whole microseconds, so the sweep compares it exactly.
 - `files.sha256`: B-tree index (not unique; duplicates have their own rows).
 - `files.status`: B-tree index.
 - `files.embedding`: `vector(768)`, HNSW index with `vector_cosine_ops`.
@@ -1470,8 +1482,8 @@ One file at a time.
 - **Bars:** one colour (`sun`), sorted by amount.
 - **Several currencies:** totals are shown per currency; nothing is converted.
 - **Amounts:** right-aligned with tabular figures. Formatted with `Intl.NumberFormat('en-IN', { style: 'currency', currency })`, which gives Indian digit grouping (₹1,23,456.00) (A25).
-- **Rows:** clicking one opens the file drawer.
-- **Export CSV:** exports the selected month.
+- **Rows:** clicking one opens the file drawer. Only filed receipts are listed, by receipt date, newest first: Needs review items, duplicates and undone files are left out.
+- **Export CSV:** exports the selected month as UTF-8 with columns Date, Vendor, Category, Paid by, Amount, Currency, File. A cell that starts with `=`, `+`, `-` or `@` gets a leading apostrophe, because vendors come from Gemma and a spreadsheet would run such a cell as a formula.
 - **Empty state:** "No receipts this month. Snap one with the phone page." with [Show phone QR code].
 
 #### 7.4.6 Folders (`/folders`)
@@ -1512,11 +1524,10 @@ One file at a time.
 
 **Missing folder:** the row shows "Folder not found" with [Locate] and [Remove].
 
-**Track U contract boundary:** the output folder's Open action and a missing
-folder's Locate action are deferred. The fixed contract has file-ID open/reveal
-operations and folder updates for label, mode and enabled state, but no operation
-to open the output root or replace a watched folder's path. Remove remains
-available and confirms that already-filed files stay in place.
+**Track U contract boundary:** the output folder's Open action is deferred; the
+contract has file-ID open/reveal operations but no operation to open the output
+root. A missing folder's Locate sends the new path as `path` on
+`PATCH /folders/{id}` (4.5). Remove confirms that already-filed files stay in place.
 
 **Phone page block**
 - **QR code** for the phone URL.
@@ -1547,7 +1558,10 @@ available and confirms that already-filed files stay in place.
 - **Folder name:** locked once the category has files: "The folder name is fixed once files are in it." Renaming changes only the display name and what Gemma reads.
 - **Remove:** only when the category has 0 files. Otherwise it is disabled, with the tooltip "Move its files to another category first."
 - **Other tab:** read-only. Those folders are sorted by extension.
-- **Name uniqueness:** names must be unique within a type.
+- **Name uniqueness:** names must be unique within a type, without regard to case (Gemma's answer is matched that way). So must folder names.
+- **Limits:** the name and description go into every Gemma call, so a name is at most 60 characters and a description at most 300. A folder name is at most 60 characters and one Windows accepts (no `\ / : * ? " < > |`, no dot or space at the end, not a reserved name such as `CON`).
+- **Built-in rows** (each type's Other, and the Other tab) can't be changed or removed.
+- **Remove** also waits while a file's history could put a file back into the category (Undo of a refile): "Move its files to another category first."
 
 **Track U integration:** built-in categories are read-only, matching the
 wireframe. A live file update refreshes the count and locks the folder field
@@ -1892,15 +1906,15 @@ src/SlothBox.Web/
 | GET | `/review` | Needs review items with reason codes |
 | POST | `/review/{id}/skip` | Move to the end of the review list |
 | GET | `/search?q=&type=&categoryId=&from=&to=` | Hybrid search; each hit has `matchedWords` and `matchedMeaning`; an unknown `type` gets 400 |
-| GET | `/receipts?month=2026-10` | Rows and totals per category and currency |
-| GET | `/receipts/export.csv?month=2026-10` | CSV download |
-| GET, POST | `/categories` | List, create |
-| PUT, DELETE | `/categories/{id}` | Edit, remove (rules in 7.4.7) |
+| GET | `/receipts?month=2026-10` | Rows and totals per category and currency; `month` defaults to the current month, anything but `yyyy-MM` gets 400 |
+| GET | `/receipts/export.csv?month=2026-10` | CSV download (7.4.5) |
+| GET, POST | `/categories` | List, create; 400 when the rules refuse it, 409 when the name or folder is taken |
+| PUT, DELETE | `/categories/{id}` | Edit, remove (rules in 7.4.7); 409 for a built-in row, a fixed folder or a category still in use |
 | GET | `/folders` | Watched folders with counts and baseline sizes |
 | POST | `/folders/check` | Body `{ path }`; returns accepted, refused with reason, or copy-only |
-| POST | `/folders` | Body `{ path, label?, mode, tidyExisting }` |
-| PATCH | `/folders/{id}` | `{ enabled?, mode?, label? }` |
-| POST | `/folders/{id}/tidy-existing` | Queue the baseline files |
+| POST | `/folders` | Body `{ path, label?, mode, tidyExisting }`; 400 with the rule's reason when refused |
+| PATCH | `/folders/{id}` | `{ enabled?, mode?, label?, path? }`; `path` is Locate (4.5); 400 when refused, 409 while the folder is still at its path |
+| POST | `/folders/{id}/tidy-existing` | Queue the baseline files; 409 while the folder is off or missing |
 | DELETE | `/folders/{id}` | Stop watching |
 | POST | `/system/pick-folder` | Opens the native dialog; returns `{ path }` or `{ path: null }` when cancelled; 409 in headless mode |
 | GET, PUT | `/settings` | Theme is UI-only; this covers start at login, laziness seconds, Ollama address |

@@ -23,6 +23,7 @@ using SlothBox.Server.Endpoints;
 using SlothBox.Server.Events;
 using SlothBox.Server.Phone;
 using SlothBox.Server.Settings;
+using SlothBox.Server.Watching;
 using SlothBox.Server.Worker;
 
 namespace SlothBox.Server;
@@ -58,9 +59,13 @@ public static class ServerHost
         AddEngine(builder.Services);
         // Test hosts run under "Testing" and must never reach the real database or Ollama.
         if (!builder.Environment.IsEnvironment("Testing"))
+        {
             builder.Services.AddHostedService<PipelineWorker>();
+            builder.Services.AddHostedService<WatchService>();
+        }
         builder.Services.AddSingleton(new PhonePage(EmbeddedUi.Files()));
         DashboardServices.Add(builder.Services);
+        WatchingServices.Add(builder.Services);
         builder.Services.AddProblemDetails();
         builder.Services.ConfigureHttpJsonOptions(options =>
             options.SerializerOptions.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.SnakeCaseLower)));

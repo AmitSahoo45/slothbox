@@ -4,7 +4,9 @@ using SlothBox.Core;
 using SlothBox.Core.Pipeline;
 using SlothBox.Server.Api;
 using SlothBox.Server.Events;
+using SlothBox.Server.Watching;
 using SlothBox.Server.Worker;
+using SlothBox.Tests.Watching;
 
 namespace SlothBox.Tests.Worker;
 
@@ -50,11 +52,14 @@ public sealed class PipelineWorkerTests
         public ServerEvents Events { get; } = new();
         public FixedSettings Settings { get; } = new(new SlothBoxSettings { OutputRoot = @"D:\slothbox-test\out" });
         public List<ServerEvent> Published { get; } = [];
+        public InMemoryFinishedPaths Finished { get; } = new();
+        public TidyBatches Tidy => _tidy ??= new TidyBatches(Events);
+        private TidyBatches? _tidy;
 
         public async Task StartAsync()
         {
             _worker = new PipelineWorker(Queue, Pipeline, new RecoveryOnlyMover(Sequence), Database, Gemma, Settings,
-                State, Stats, Events, NullLogger<PipelineWorker>.Instance, Fast);
+                State, Stats, Events, NullLogger<PipelineWorker>.Instance, Fast, new FolderJobs(Finished, Tidy));
             await _worker.StartAsync(Ct);
         }
 
@@ -103,6 +108,72 @@ public sealed class PipelineWorkerTests
             @"D:\slothbox-test\out\Receipts\Bills and recharges\2026-10-20_Jio_599INR.jpg", FileKind.Receipt, 3,
             "Jio recharge", "UPI payment of 599 INR to Jio", "", now, 5, status, reason, duplicateOf, now, now);
         return new PipelineResult.Filed(file, "Bills and recharges", "Downloads", true);
+    }
+
+    // Spec 4.3: the watchers and the first sweep start after crash recovery and the requeue.
+    [Fact]
+    public async Task The_worker_tells_the_watchers_once_its_start_up_is_done()
+    {
+        await using var h = new WorkerHarness();
+        h.Gemma.Ready = false;
+
+        await h.StartAsync();
+
+        await h.State.WaitUntilStartedAsync(Ct).WaitAsync(TimeSpan.FromSeconds(5), Ct);
+        h.SequenceSnapshot().Take(4).ShouldBe(["migrate", "recover", "requeue", "check"]);
+    }
+
+    // Spec 4.5: a copy-only original is still in its folder after its filing, so the sweep must pass it over.
+    [Fact]
+    public async Task A_file_left_in_place_by_its_job_becomes_a_finished_path()
+    {
+        using var temp = new TempFolder();
+        var original = temp.Write("IMG_2043.jpg", "photo");
+        await using var h = new WorkerHarness();
+        h.Queue.Add(original);
+        h.Pipeline.Answer = _ => Filed();
+
+        await h.StartAsync();
+
+        await UntilAsync(() => h.Job(0).Status == JobStatus.Done, "the job is done");
+        await UntilAsync(() => h.Finished.Entries.ContainsKey(original), "the path is finished");
+        h.Finished.Entries[original].FolderId.ShouldBe(1);
+    }
+
+    // Recorded while the job still holds its path in the queue: a sweep in between can neither queue it again nor miss
+    // the record (spec 4.5).
+    [Fact]
+    public async Task A_finished_path_is_recorded_before_its_job_is_marked_done()
+    {
+        using var temp = new TempFolder();
+        var original = temp.Write("IMG_2044.jpg", "photo");
+        await using var h = new WorkerHarness();
+        h.Queue.Add(original);
+        h.Pipeline.Answer = _ => Filed();
+        JobStatus? statusWhenRecorded = null;
+        h.Finished.OnRecord = _ => statusWhenRecorded = h.Job(0).Status;
+
+        await h.StartAsync();
+
+        await UntilAsync(() => h.Job(0).Status == JobStatus.Done && statusWhenRecorded is not null, "the job is done");
+        statusWhenRecorded.ShouldBe(JobStatus.Processing);
+    }
+
+    [Fact]
+    public async Task A_tidied_file_waiting_for_its_retry_does_not_count_as_tidied_yet()
+    {
+        await using var h = new WorkerHarness();
+        h.Queue.Add(Photo);
+        h.Tidy.Start(1, [Photo]);
+        var answers = new Queue<PipelineResult>([new PipelineResult.NotReady(), Filed()]);
+        h.Pipeline.Answer = _ => answers.Dequeue();
+
+        await h.StartAsync();
+
+        await UntilAsync(() => h.EventsNamed("folder.tidy-progress").Count == 2, "the tidy is done");
+        h.Pipeline.RunCount.ShouldBe(2);
+        h.EventsNamed("folder.tidy-progress").Select(e => e.Payload).ShouldBe(
+            [new FolderTidyProgressEvent(1, 0, 1), new FolderTidyProgressEvent(1, 1, 1)]);
     }
 
     [Fact]

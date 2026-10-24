@@ -1,4 +1,5 @@
 using SlothBox.Core;
+using SlothBox.Core.Folders;
 using SlothBox.Core.Pipeline;
 using SlothBox.Server.Worker;
 
@@ -55,6 +56,12 @@ internal sealed class FakeQueue(List<string> sequence) : IJobQueue
                 Jobs.Add(new FakeJob { Id = ++_nextId, File = file, Status = JobStatus.Queued });
         }
         return Task.CompletedTask;
+    }
+
+    public async Task<bool> EnqueueUnlessFinishedAsync(IncomingFile file, FileStamp stamp, CancellationToken ct)
+    {
+        await EnqueueAsync(file, ct);
+        return true;
     }
 
     public Task<Job?> ClaimNextAsync(CancellationToken ct)

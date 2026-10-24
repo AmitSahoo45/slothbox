@@ -32,7 +32,8 @@ public class MigrationTests
         await using var db = new SlothBoxDbContext(options);
         await db.Database.MigrateAsync(ct);
         await db.Database.MigrateAsync(ct);
-        (await db.Database.GetAppliedMigrationsAsync(ct)).ShouldHaveSingleItem();
+        (await db.Database.GetAppliedMigrationsAsync(ct)).ShouldBe(["20261020140119_Initial",
+            "20261024131724_FinishedPaths"]);
         (await db.Database.GetPendingMigrationsAsync(ct)).ShouldBeEmpty();
         db.Database.HasPendingModelChanges().ShouldBeFalse();
 
@@ -48,7 +49,7 @@ public class MigrationTests
         (await Scalar("SELECT count(*) FROM categories")).ShouldBe("19");
         (await Scalar("SELECT count(*) FROM categories WHERE is_system")).ShouldBe("7");
         (await Scalar("SELECT count(*) FROM categories WHERE name = 'Other' AND is_system")).ShouldBe("3");
-        (await Scalar("SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_name IN ('categories','watched_folders','folder_baseline','files','receipts','actions','jobs','ignored_hashes','app_state')")).ShouldBe("9");
+        (await Scalar("SELECT count(*) FROM information_schema.tables WHERE table_schema = 'public' AND table_name IN ('categories','watched_folders','folder_baseline','finished_paths','files','receipts','actions','jobs','ignored_hashes','app_state')")).ShouldBe("10");
         (await Scalar("SELECT indexdef FROM pg_indexes WHERE indexname = 'ix_files_embedding'"))
             .ShouldContain("USING hnsw (embedding vector_cosine_ops)");
         (await Scalar("SELECT indexdef FROM pg_indexes WHERE indexname = 'ix_files_search'"))

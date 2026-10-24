@@ -32,6 +32,16 @@ public sealed class FolderBaseline
     public string Path { get; set; } = "";
 }
 
+// Spec 4.5: a file that stayed in its folder after its last job, with the size and last-write time it had then.
+public sealed class StoredFinishedPath
+{
+    public string Path { get; set; } = "";
+    public int? FolderId { get; set; }
+    public long SizeBytes { get; set; }
+    public DateTimeOffset LastWriteAt { get; set; }
+    public DateTimeOffset FinishedAt { get; set; }
+}
+
 public sealed class StoredFile
 {
     public Guid Id { get; set; }
