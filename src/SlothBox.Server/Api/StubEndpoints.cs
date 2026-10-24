@@ -27,8 +27,8 @@ internal static class StubEndpoints
         Document<UndoBatchResultDto>(api.MapPost("/undo/since", (UndoSinceRequest request) => NotImplemented()), "UndoSince");
         Document<IReadOnlyList<ReviewItemDto>>(api.MapGet("/review", NotImplemented), "GetReview");
         Document<MutationResultDto>(api.MapPost("/review/{id:guid}/skip", (Guid id) => NotImplemented()), "SkipReview");
-        Document<SearchResultDto>(api.MapGet("/search",
-            (string? q, string? type, int? categoryId, DateOnly? from, DateOnly? to) => NotImplemented()), "Search");
+        Document<SearchResultDto>(api.MapGet("/search", SearchEndpoints.Search)
+            .ProducesProblem(StatusCodes.Status400BadRequest), "Search");
         Document<ReceiptsDto>(api.MapGet("/receipts", (string? month) => NotImplemented()), "GetReceipts");
         Binary(api.MapGet("/receipts/export.csv", (string? month) => NotImplemented()), "ExportReceipts", "text/csv");
         Document<IReadOnlyList<CategoryDto>>(api.MapGet("/categories", NotImplemented), "GetCategories");
@@ -52,7 +52,7 @@ internal static class StubEndpoints
         Document<PhoneDto>(api.MapPost("/phone/rotate", NotImplemented), "RotatePhone");
         Document<IReadOnlyList<IgnoredFileDto>>(api.MapGet("/ignored", NotImplemented), "GetIgnored");
         Document<MutationResultDto>(api.MapDelete("/ignored/{sha256}", (string sha256) => NotImplemented()), "AllowIgnored");
-        Document<RebuildResultDto>(api.MapPost("/search-data/rebuild", NotImplemented), "RebuildSearchData");
+        Document<RebuildResultDto>(api.MapPost("/search-data/rebuild", SearchEndpoints.Rebuild), "RebuildSearchData");
 
         app.MapGet("/events", () => Results.Text(": ready\n\n", "text/event-stream"))
             .WithName("GetEvents").WithTags("Events").Produces<string>(200, "text/event-stream");

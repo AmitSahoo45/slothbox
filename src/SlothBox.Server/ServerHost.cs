@@ -104,6 +104,7 @@ public static class ServerHost
         services.AddSingleton<IActionLog, ActionLog>();
         services.AddSingleton<ICategoryRepository, CategoryRepository>();
         services.AddSingleton<IWatchedFolderRepository, WatchedFolderRepository>();
+        services.AddSingleton<Data.Search.SearchService>();
         services.AddSingleton<IFileGate>(sp => new FileGate(sp.GetRequiredService<IWatchedFolderRepository>(),
             sp.GetRequiredService<IIgnoredHashes>(), sp.GetRequiredService<IFileRepository>(),
             sp.GetRequiredService<ISettingsStore>().Current.Pipeline));
