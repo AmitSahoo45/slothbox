@@ -30,6 +30,7 @@ public sealed class PipelineWorkerTests
             Queue = new FakeQueue(Sequence);
             Pipeline = new ScriptedPipeline(Sequence);
             Database = new FakeDatabase(Sequence);
+            Gemma = new FakeGemma(Sequence);
             _subscription = Events.Subscribe();
             _collector = Task.Run(async () =>
             {
@@ -43,6 +44,8 @@ public sealed class PipelineWorkerTests
         public FakeQueue Queue { get; }
         public ScriptedPipeline Pipeline { get; }
         public FakeDatabase Database { get; }
+        public FakeGemma Gemma { get; }
+        public WorkerStats Stats { get; } = new();
         public WorkerState State { get; } = new();
         public ServerEvents Events { get; } = new();
         public FixedSettings Settings { get; } = new(new SlothBoxSettings { OutputRoot = @"D:\slothbox-test\out" });
@@ -50,8 +53,8 @@ public sealed class PipelineWorkerTests
 
         public async Task StartAsync()
         {
-            _worker = new PipelineWorker(Queue, Pipeline, new RecoveryOnlyMover(Sequence), Database, Settings, State,
-                Events, NullLogger<PipelineWorker>.Instance, Fast);
+            _worker = new PipelineWorker(Queue, Pipeline, new RecoveryOnlyMover(Sequence), Database, Gemma, Settings,
+                State, Stats, Events, NullLogger<PipelineWorker>.Instance, Fast);
             await _worker.StartAsync(Ct);
         }
 
@@ -112,8 +115,43 @@ public sealed class PipelineWorkerTests
         await h.StartAsync();
 
         await UntilAsync(() => h.Job(0).Status == JobStatus.Done, "the interrupted job is done");
-        h.SequenceSnapshot().Take(4).ShouldBe(["migrate", "recover", "requeue", "claim"]);
+        h.SequenceSnapshot().Take(5).ShouldBe(["migrate", "recover", "requeue", "check", "claim"]);
         h.Pipeline.Runs.ShouldHaveSingleItem().Id.ShouldBe(interrupted.Id);
+    }
+
+    [Fact]
+    public async Task On_start_without_both_models_the_worker_stays_paused_until_they_are_there()
+    {
+        await using var h = new WorkerHarness();
+        h.Gemma.Ready = false;
+        h.Queue.Add(Photo);
+        h.Pipeline.Answer = _ => Filed();
+
+        await h.StartAsync();
+
+        await UntilAsync(() => h.State.Paused, "the worker stays paused");
+        h.State.Reason.ShouldBe(PauseReason.GemmaOffline);
+        await Task.Delay(150, Ct);
+        (h.Job(0).Status, h.Pipeline.RunCount).ShouldBe((JobStatus.Queued, 0));
+
+        h.Gemma.Ready = true;
+
+        await UntilAsync(() => h.Job(0).Status == JobStatus.Done, "the job runs once both models are there");
+        h.State.Paused.ShouldBeFalse();
+    }
+
+    [Fact]
+    public async Task Each_file_filed_counts_toward_todays_average_time()
+    {
+        await using var h = new WorkerHarness();
+        h.Queue.Add(Photo);
+        h.Queue.Add(Second);
+        h.Pipeline.Answer = job => job.File.Path == Photo ? Filed() : new PipelineResult.Skipped("temporary");
+
+        await h.StartAsync();
+
+        await UntilAsync(() => h.Job(1).Status == JobStatus.Skipped, "both jobs are done");
+        h.Stats.AverageSecondsToday.ShouldNotBeNull().ShouldBeGreaterThanOrEqualTo(0);
     }
 
     [Fact]
@@ -230,31 +268,30 @@ public sealed class PipelineWorkerTests
     }
 
     [Fact]
-    public async Task Gemma_offline_returns_the_job_to_the_queue_pauses_the_worker_and_it_tries_again_by_itself()
+    public async Task Gemma_offline_returns_the_job_to_the_queue_and_the_worker_resumes_once_Gemma_is_back()
     {
         await using var h = new WorkerHarness();
         h.Queue.Add(Photo);
         var attempts = 0;
-        var gemmaBack = new TaskCompletionSource();
         h.Pipeline.Answer = _ =>
         {
-            if (Interlocked.Increment(ref attempts) < 3)
-                return new PipelineResult.Offline("No connection could be made to 127.0.0.1:11436.");
-            gemmaBack.Task.Wait(TimeSpan.FromSeconds(5));
-            return Filed();
+            if (Interlocked.Increment(ref attempts) > 1)
+                return Filed();
+            // Ollama goes away mid-job.
+            h.Gemma.Ready = false;
+            return new PipelineResult.Offline("No connection could be made to 127.0.0.1:11436.");
         };
 
         await h.StartAsync();
 
         await UntilAsync(() => h.State.Paused, "the worker pauses itself");
         h.State.Reason.ShouldBe(PauseReason.GemmaOffline);
-        h.Job(0).Status.ShouldBeOneOf(JobStatus.Queued, JobStatus.Processing);
-        await UntilAsync(() => attempts == 3, "the worker keeps trying by itself");
-        (h.State.Paused, h.State.Reason).ShouldBe((true, (PauseReason?)PauseReason.GemmaOffline));
+        await UntilAsync(() => h.SequenceSnapshot().Count(step => step == "check") >= 3, "the worker keeps checking");
+        (h.State.Paused, h.Job(0).Status, attempts).ShouldBe((true, JobStatus.Queued, 1));
 
-        gemmaBack.SetResult();
+        h.Gemma.Ready = true;
 
-        await UntilAsync(() => h.Job(0).Status == JobStatus.Done, "the job is done once Gemma answers");
+        await UntilAsync(() => h.Job(0).Status == JobStatus.Done, "the job is done once Gemma is back");
         await UntilAsync(() => !h.State.Paused, "the worker resumes by itself");
         await UntilAsync(() => h.EventsNamed("worker.changed").LastOrDefault()?.Payload is WorkerChanged(false, null),
             "the worker announces it runs again");
@@ -294,12 +331,17 @@ public sealed class PipelineWorkerTests
     {
         await using var h = new WorkerHarness();
         h.Queue.Add(Photo);
-        h.Pipeline.Answer = _ => new PipelineResult.Offline("No connection could be made to 127.0.0.1:11436.");
+        h.Pipeline.Answer = _ =>
+        {
+            h.Gemma.Ready = false;
+            return new PipelineResult.Offline("No connection could be made to 127.0.0.1:11436.");
+        };
 
         await h.StartAsync();
 
         await UntilAsync(() => h.State.Paused, "the worker pauses itself");
         h.State.Pause(PauseReason.User);
+        h.Gemma.Ready = true;
 
         await Task.Delay(200, Ct);
         (h.State.Paused, h.State.Reason).ShouldBe((true, (PauseReason?)PauseReason.User));
@@ -307,22 +349,33 @@ public sealed class PipelineWorkerTests
     }
 
     [Fact]
-    public async Task A_re_check_that_finds_the_drive_full_keeps_the_worker_paused()
+    public async Task After_Gemma_is_back_a_full_drive_still_pauses_the_worker()
     {
         await using var h = new WorkerHarness();
         h.Queue.Add(Photo);
         h.Queue.Add(Second);
         var attempts = 0;
-        h.Pipeline.Answer = _ => Interlocked.Increment(ref attempts) switch
+        h.Pipeline.Answer = _ =>
         {
-            1 => new PipelineResult.Offline("No connection could be made to 127.0.0.1:11436."),
-            2 => new PipelineResult.Failed(Guid.NewGuid(), "There is not enough space on the disk.", MoveFailure.DriveFull),
-            _ => Filed()
+            switch (Interlocked.Increment(ref attempts))
+            {
+                case 1:
+                    h.Gemma.Ready = false;
+                    return new PipelineResult.Offline("No connection could be made to 127.0.0.1:11436.");
+                case 2:
+                    return new PipelineResult.Failed(Guid.NewGuid(), "There is not enough space on the disk.",
+                        MoveFailure.DriveFull);
+                default:
+                    return Filed();
+            }
         };
 
         await h.StartAsync();
 
-        await UntilAsync(() => h.State.Reason == PauseReason.DriveFull, "the re-check finds the drive full");
+        await UntilAsync(() => h.State.Reason == PauseReason.GemmaOffline, "the worker pauses for Gemma");
+        h.Gemma.Ready = true;
+
+        await UntilAsync(() => h.State.Reason == PauseReason.DriveFull, "the next file finds the drive full");
         await Task.Delay(200, Ct);
         (h.State.Paused, h.State.Reason).ShouldBe((true, (PauseReason?)PauseReason.DriveFull));
         h.Job(1).Status.ShouldBe(JobStatus.Queued);

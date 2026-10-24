@@ -40,6 +40,19 @@ public interface IFileAnalyzer
     Task<AnalysisResult> AnalyzeAsync(AnalysisRequest request, CancellationToken ct);
 }
 
+// Spec 4.3 step 7: is Ollama answering, and which models are pulled and loaded? Implemented in Ai.
+public interface IOllamaStatus
+{
+    Task<GemmaState> CheckAsync(CancellationToken ct);
+}
+
+// Opens a file with its default app, or shows it selected in Explorer (spec 7.4.9). Callers check the path first.
+public interface IFileLauncher
+{
+    void Open(string path);
+    void Reveal(string path);
+}
+
 public interface INameBuilder
 {
     // <outputRoot>\Receipts|Screenshots|Documents|Other\<categoryFolder>
@@ -81,6 +94,9 @@ public interface IUndoService
     Task<UndoResult> UndoFileAsync(Guid fileId, CancellationToken ct);
     Task<UndoResult> UndoLastAsync(CancellationToken ct);
     Task<IReadOnlyList<UndoResult>> UndoSinceAsync(DateTimeOffset since, CancellationToken ct);
+    // How many actions UndoSinceAsync would try to reverse (spec 7.4.2 confirm dialog). Files changed since filing
+    // are refused when the undo runs, so it can undo fewer.
+    Task<int> CountSinceAsync(DateTimeOffset since, CancellationToken ct);
 }
 
 public interface ISearchService
@@ -143,6 +159,11 @@ public interface IActionLog
     Task<long?> AppendPendingAsync(MoveRequest request, CancellationToken ct);
     // Done points the file at the action's destination; failed puts back the action's Before state.
     Task CompleteAsync(long id, ActionStatus status, string? error, CancellationToken ct);
+    // A change that moves nothing (spec 6.6): `after` is applied to the file and its receipt row under the same
+    // per-file lock and checks as AppendPendingAsync. False, with nothing written, while the file has a pending
+    // action, is no longer at `path`, or no longer matches `before`.
+    Task<bool> UpdateFieldsAsync(Guid fileId, string path, FileSnapshot before, FileSnapshot after,
+        CancellationToken ct);
     Task<IReadOnlyList<FileAction>> GetPendingAsync(CancellationToken ct);
     Task<IReadOnlyList<FileAction>> GetForFileAsync(Guid fileId, CancellationToken ct);
     Task<IReadOnlyList<FileAction>> GetDoneSinceAsync(DateTimeOffset since, CancellationToken ct);

@@ -17,14 +17,7 @@ public sealed class ActionLog(IDbContextFactory<SlothBoxDbContext> contexts) : I
     {
         await using var db = await contexts.CreateDbContextAsync(ct);
         await using var transaction = await db.Database.BeginTransactionAsync(ct);
-        // One change per file at a time: the row lock makes a concurrent request wait, then see this one.
-        var file = (await db.Files.FromSql($"SELECT * FROM files WHERE id = {request.FileId} FOR UPDATE")
-            .ToListAsync(ct)).Single();
-        var receipt = await db.Receipts.SingleOrDefaultAsync(r => r.FileId == file.Id, ct);
-        // Under the lock, the change must start from where the file is now; a request built from a stale view does not.
-        if (await db.Actions.AnyAsync(a => a.FileId == file.Id && a.Status == ActionStatus.Pending, ct) ||
-            !string.Equals(file.CurrentPath, request.From, StringComparison.Ordinal) ||
-            request.Before is { } expected && expected != ToSnapshot(file, receipt))
+        if (await LockAsync(db, request.FileId, request.From, request.Before, ct) is not var (file, receipt))
             return null;
 
         var now = DateTimeOffset.UtcNow;
@@ -53,6 +46,37 @@ public sealed class ActionLog(IDbContextFactory<SlothBoxDbContext> contexts) : I
         await db.SaveChangesAsync(ct);
         await transaction.CommitAsync(ct);
         return action.Id;
+    }
+
+    public async Task<bool> UpdateFieldsAsync(Guid fileId, string path, FileSnapshot before, FileSnapshot after,
+        CancellationToken ct)
+    {
+        await using var db = await contexts.CreateDbContextAsync(ct);
+        await using var transaction = await db.Database.BeginTransactionAsync(ct);
+        if (await LockAsync(db, fileId, path, before, ct) is not var (file, receipt))
+            return false;
+        Apply(db, file, receipt, after, DateTimeOffset.UtcNow);
+        await db.SaveChangesAsync(ct);
+        await transaction.CommitAsync(ct);
+        return true;
+    }
+
+    // One change per file at a time: the row lock makes a concurrent change wait, then see this one. Under the lock,
+    // the change must start from where the file is now and as it is now; one built from a stale view is refused, as
+    // is any change while another is pending. Null when refused (or the file is unknown).
+    private static async Task<(StoredFile File, StoredReceipt? Receipt)?> LockAsync(SlothBoxDbContext db, Guid fileId,
+        string path, FileSnapshot? before, CancellationToken ct)
+    {
+        var file = (await db.Files.FromSql($"SELECT * FROM files WHERE id = {fileId} FOR UPDATE").ToListAsync(ct))
+            .SingleOrDefault();
+        if (file is null)
+            return null;
+        var receipt = await db.Receipts.SingleOrDefaultAsync(r => r.FileId == file.Id, ct);
+        if (await db.Actions.AnyAsync(a => a.FileId == file.Id && a.Status == ActionStatus.Pending, ct) ||
+            !string.Equals(file.CurrentPath, path, StringComparison.Ordinal) ||
+            before is { } expected && expected != ToSnapshot(file, receipt))
+            return null;
+        return (file, receipt);
     }
 
     public async Task CompleteAsync(long id, ActionStatus status, string? error, CancellationToken ct)
@@ -143,7 +167,7 @@ public sealed class ActionLog(IDbContextFactory<SlothBoxDbContext> contexts) : I
     private static FileSnapshot? ToSnapshot(string? json) =>
         json is null ? null : JsonSerializer.Deserialize<FileSnapshot>(json, SnapshotJson);
 
-    private static FileAction ToAction(StoredAction a) =>
+    internal static FileAction ToAction(StoredAction a) =>
         new(a.Id, a.FileId, a.Kind, a.FromPath, a.ToPath, a.Sha256, a.Status, a.Error, ToSnapshot(a.Before),
             a.CreatedAt, a.UpdatedAt, a.CompletedAt);
 }

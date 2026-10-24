@@ -1,6 +1,9 @@
 using System.Net;
 using System.Text;
 using Microsoft.AspNetCore.Http;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
+using SlothBox.Data;
 
 namespace SlothBox.Tests.Api;
 
@@ -29,7 +32,7 @@ public sealed class ApiSecurityTests(ServerFactory factory) : IClassFixture<Serv
         client.DefaultRequestHeaders.Host = host;
         client.DefaultRequestHeaders.Remove("X-SlothBox");
         using var response = await client.GetAsync("/api/status", TestContext.Current.CancellationToken);
-        response.StatusCode.ShouldBe(HttpStatusCode.NotImplemented);
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
     }
 
     [Theory]
@@ -114,6 +117,11 @@ public sealed class ApiSecurityTests(ServerFactory factory) : IClassFixture<Serv
         using var dashboard = await client.SendAsync(request, TestContext.Current.CancellationToken);
         dashboard.StatusCode.ShouldBe(HttpStatusCode.NotFound);
     }
+
+    [Fact]
+    public void Api_tests_never_reach_a_real_database() =>
+        Should.Throw<InvalidOperationException>(() => factory.Services
+            .GetRequiredService<IDbContextFactory<SlothBoxDbContext>>().CreateDbContext());
 
     [Fact]
     public async Task File_actions_cannot_address_a_file_by_path()

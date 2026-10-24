@@ -74,7 +74,7 @@ public sealed class FileRepository(IDbContextFactory<SlothBoxDbContext> contexts
         await db.SaveChangesAsync(ct);
     }
 
-    private static FileRecord ToRecord(StoredFile f) =>
+    internal static FileRecord ToRecord(StoredFile f) =>
         new(f.Id, f.Sha256, f.Origin, f.WatchedFolderId, f.OriginalName, f.OriginalPath, f.CurrentPath, f.Type,
             f.CategoryId, f.Title, f.Caption, f.ExtractedText, f.FileDate, f.SizeBytes, f.Status, f.ReviewReason,
             f.DuplicateOf, f.CreatedAt, f.UpdatedAt);

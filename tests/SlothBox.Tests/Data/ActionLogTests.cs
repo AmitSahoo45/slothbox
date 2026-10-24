@@ -23,6 +23,41 @@ public sealed class ActionLogTests(PostgresFixture postgres)
         (await h.ActionsAsync(file.Id)).ShouldBeEmpty();
     }
 
+    private static readonly FileSnapshot FiledBill = new(FileStatus.Filed, FileKind.Receipt, 3, "Jio recharge", null,
+        new ReceiptData("Jio", new DateOnly(2026, 10, 20), 599m, "INR", PaymentMethod.Upi));
+
+    [Fact]
+    public async Task A_field_update_applies_the_new_fields_and_receipt_together_without_an_action()
+    {
+        await using var h = await MoveHarness.CreateAsync(postgres);
+        var bill = h.WriteOutput("receipt photo", "Receipts", "Bills and recharges", "2026-10-20_Jio_599INR.jpg");
+        var file = await h.AddFileAsync(bill, FiledBill);
+        var after = FiledBill with { Title = "Jio prepaid recharge", Receipt = FiledBill.Receipt! with { PaymentMethod = PaymentMethod.Card } };
+
+        (await h.Log.UpdateFieldsAsync(file.Id, bill, FiledBill, after, Ct)).ShouldBeTrue();
+
+        (await h.SnapshotAsync(file.Id)).ShouldBe(after);
+        (await h.ActionsAsync(file.Id)).ShouldBeEmpty();
+    }
+
+    [Fact]
+    public async Task A_field_update_is_refused_while_a_change_is_pending_or_from_a_stale_view()
+    {
+        await using var h = await MoveHarness.CreateAsync(postgres);
+        var bill = h.WriteOutput("receipt photo", "Receipts", "Bills and recharges", "2026-10-20_Jio_599INR.jpg");
+        var file = await h.AddFileAsync(bill, FiledBill);
+        var after = FiledBill with { Title = "Jio prepaid recharge" };
+
+        (await h.Log.UpdateFieldsAsync(file.Id, bill, FiledBill with { Title = "an older title" }, after, Ct))
+            .ShouldBeFalse();
+        (await h.Log.UpdateFieldsAsync(file.Id, bill + ".elsewhere", FiledBill, after, Ct)).ShouldBeFalse();
+        (await h.Log.AppendPendingAsync(new MoveRequest(file.Id, ActionKind.Move, bill,
+            h.Output("Receipts", "Food", "bill.jpg"), file.Sha256), Ct)).ShouldNotBeNull();
+        (await h.Log.UpdateFieldsAsync(file.Id, bill, FiledBill, after, Ct)).ShouldBeFalse();
+
+        (await h.SnapshotAsync(file.Id)).ShouldBe(FiledBill);
+    }
+
     [Fact]
     public async Task A_late_second_completion_does_not_overwrite_the_first()
     {

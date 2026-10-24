@@ -26,7 +26,34 @@ public sealed class SafeMover(
         await using (var copy = new FileStream(to, FileMode.CreateNew, FileAccess.Write, FileShare.None, bufferSize,
                          FileOptions.Asynchronous))
             await source.CopyToAsync(copy, ct);
+        if (OperatingSystem.IsWindows())
+            await CopyMarkOfTheWebAsync(from, to, ct);
         File.SetLastWriteTimeUtc(to, File.GetLastWriteTimeUtc(from));
+    }
+
+    // Windows marks downloads with a Zone.Identifier stream. A move on one drive keeps it; a copy must carry it too,
+    // or opening the filed copy would skip SmartScreen and Office's Protected View.
+    private static async Task CopyMarkOfTheWebAsync(string from, string to, CancellationToken ct)
+    {
+        const string zone = ":Zone.Identifier";
+        byte[] mark;
+        try
+        {
+            mark = await File.ReadAllBytesAsync(from + zone, ct);
+        }
+        catch (IOException)
+        {
+            // No mark, or a drive without streams.
+            return;
+        }
+        try
+        {
+            await File.WriteAllBytesAsync(to + zone, mark, ct);
+        }
+        catch (IOException)
+        {
+            // An output drive without streams (not NTFS) cannot hold the mark; the file is filed without it.
+        }
     }
 
     public async Task<MoveResult> MoveAsync(MoveRequest request, CancellationToken ct)

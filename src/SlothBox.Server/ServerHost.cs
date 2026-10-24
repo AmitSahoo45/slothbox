@@ -19,6 +19,7 @@ using SlothBox.Data.Files;
 using SlothBox.Data.Folders;
 using SlothBox.Data.Queue;
 using SlothBox.Server.Api;
+using SlothBox.Server.Endpoints;
 using SlothBox.Server.Events;
 using SlothBox.Server.Phone;
 using SlothBox.Server.Settings;
@@ -59,6 +60,7 @@ public static class ServerHost
         if (!builder.Environment.IsEnvironment("Testing"))
             builder.Services.AddHostedService<PipelineWorker>();
         builder.Services.AddSingleton(new PhonePage(EmbeddedUi.Files()));
+        DashboardServices.Add(builder.Services);
         builder.Services.AddProblemDetails();
         builder.Services.ConfigureHttpJsonOptions(options =>
             options.SerializerOptions.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.SnakeCaseLower)));
@@ -88,7 +90,9 @@ public static class ServerHost
         app.Use(ApiProtection.InvokeAsync);
         app.UseStatusCodePages();
         app.MapOpenApi();
+        DashboardEndpoints.Map(app);
         StubEndpoints.Map(app);
+        EventsEndpoint.Map(app);
         PhoneEndpoints.Map(app);
         EmbeddedUi.Map(app);
         return app;

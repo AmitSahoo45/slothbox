@@ -28,6 +28,8 @@ public sealed class SafeMoveTests(PostgresFixture postgres)
             log.GetForFileAsync(fileId, ct);
         public Task<IReadOnlyList<FileAction>> GetDoneSinceAsync(DateTimeOffset since, CancellationToken ct) =>
             log.GetDoneSinceAsync(since, ct);
+        public Task<bool> UpdateFieldsAsync(Guid fileId, string path, FileSnapshot before, FileSnapshot after,
+            CancellationToken ct) => log.UpdateFieldsAsync(fileId, path, before, after, ct);
     }
 
     private static readonly FileSnapshot InReview = new(FileStatus.Review, FileKind.Receipt, 5, "Jio recharge",
@@ -192,6 +194,27 @@ public sealed class SafeMoveTests(PostgresFixture postgres)
         Directory.EnumerateFiles(Path.GetDirectoryName(target)!).ShouldBeEmpty();
         (await h.ActionsAsync(file.Id)).ShouldHaveSingleItem().Status.ShouldBe(ActionStatus.Failed);
         (await h.FileAsync(file.Id)).CurrentPath.ShouldBe(source);
+    }
+
+    [Fact]
+    public async Task A_move_across_drives_keeps_the_mark_of_the_web()
+    {
+        Assert.SkipUnless(OperatingSystem.IsWindows(), "The mark of the web is an NTFS stream.");
+        await using var h = await MoveHarness.CreateAsync(postgres);
+        Assert.SkipUnless(new DriveInfo(Path.GetPathRoot(h.Temp.Root)!).DriveFormat == "NTFS",
+            "The mark of the web is an NTFS stream.");
+        var source = h.Watched("setup.exe", "MZ installer bytes");
+        const string zone = "[ZoneTransfer]\r\nZoneId=3\r\n";
+        File.WriteAllText(source + ":Zone.Identifier", zone);
+        var file = await h.AddFileAsync(source);
+        var target = h.Output("Other", "Installers", "setup.exe");
+
+        var result = await h.Mover(sameVolume: false)
+            .MoveAsync(new MoveRequest(file.Id, ActionKind.Move, source, target, file.Sha256), Ct);
+
+        result.Succeeded.ShouldBeTrue();
+        File.ReadAllText(target).ShouldBe("MZ installer bytes");
+        File.ReadAllText(target + ":Zone.Identifier").ShouldBe(zone);
     }
 
     [Fact]

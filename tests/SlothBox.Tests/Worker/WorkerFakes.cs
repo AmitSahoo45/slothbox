@@ -146,6 +146,27 @@ internal sealed class RecoveryOnlyMover(List<string> sequence) : ISafeMover
     }
 }
 
+// Ollama with both models pulled, until a test takes them away.
+internal sealed class FakeGemma(List<string> sequence) : IOllamaStatus
+{
+    private volatile bool _ready = true;
+
+    public bool Ready
+    {
+        get => _ready;
+        set => _ready = value;
+    }
+
+    public Task<GemmaState> CheckAsync(CancellationToken ct)
+    {
+        lock (sequence)
+            sequence.Add("check");
+        var ready = Ready;
+        return Task.FromResult(new GemmaState(true, null, new ModelState("gemma4:e4b", ready, false, false),
+            new ModelState("embeddinggemma", ready, false, false)));
+    }
+}
+
 internal sealed class FakeDatabase(List<string> sequence) : IDatabaseStartup
 {
     public Queue<Exception> Failures { get; } = new();

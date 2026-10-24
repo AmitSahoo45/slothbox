@@ -253,7 +253,7 @@ flowchart LR
 4. Connect to Postgres and apply migrations automatically. The password comes from the user-level environment variable `SLOTHBOX_DB_PASSWORD` (Section 11). Retry every 30 s while Postgres is down; the UI shows a banner.
 5. **If first-run setup is not complete:** the UI shows `/setup` (Section 7.4.1), and the worker and watchers wait until it is finished.
 6. Run crash recovery for pending actions (Section 6.5).
-7. Check Ollama and that both models are present. If not, show a banner with the pull command; the queue stays paused.
+7. Check Ollama and that both models are present. If not, show a banner with the pull command; the queue stays paused (`pauseReason: gemma_offline`). The worker checks again every 30 s, and `GET /status` checks on every call ("Check again"); the pause ends by itself once Ollama answers with both models pulled.
 8. Start a watcher for each enabled watched folder, plus the `Inbox`.
 9. Run the first sweep. Files recorded in a folder's baseline are skipped (Section 4.5).
 10. Start the worker.
@@ -764,7 +764,8 @@ The document and query prefixes match the EmbeddingGemma model card (verified 20
 - **Restart:** `processing` jobs from a crashed run return to `queued` on startup.
 - **Worker:** one worker. The GPU runs one Gemma call at a time.
 - **Pause:** Pause (tray or UI) stops the worker after the current job. Watchers keep adding jobs.
-- **Self-pause:** the worker pauses itself when the output drive is full (the user resumes from the banner) and when Gemma cannot be reached (the job goes back to `queued`; every 30 s the worker tries one job, and any answer but "offline" resumes it). `GET /status` and `status.changed` carry `pauseReason`: `user`, `drive_full`, `gemma_offline`, or null while the worker runs. A pause set by the user is lifted only by the user, and a full drive outranks an offline Gemma: the worker never lowers a pause.
+- **Self-pause:** the worker pauses itself when the output drive is full (the user resumes from the banner), when Gemma cannot be reached (the job goes back to `queued`), and when a model is missing at startup or on Resume. While paused for Gemma, every 30 s it checks Ollama and both models as in 4.3 step 7, and resumes once they are there. Resume while a model is missing keeps the worker paused for Gemma: otherwise every waiting file would go to Needs review. `GET /status` and `status.changed` carry `pauseReason`: `user`, `drive_full`, `gemma_offline`, or null while the worker runs. A pause set by the user is lifted only by the user, and a full drive outranks an offline Gemma: the worker never lowers a pause.
+- **Average seconds per file today** (status block, Section 12): the time from claiming a job to the file landing in the output folder (filed, Needs review or Duplicates), over the files since local midnight. Kept in memory, so it starts again with the app.
 - **Startup:** the worker applies the migrations (retrying every 30 s while Postgres is down), waits for first-run setup, runs crash recovery (6.5), returns interrupted jobs to the queue, then starts claiming. While Postgres is down at runtime, nothing moves; the job it interrupted returns to the queue once it is back.
 - **Outcomes:** a job ends `done` (filed or a duplicate), `review`, `skipped` (the gate skipped it, or it was locked) or `failed` (the move failed; the file row stays and a retry reuses it). The worker publishes `file.filed`, `file.review`, `file.duplicate` and `queue.changed` as each job ends.
 - **Speed target:** under 10 s per file. This is an estimate; it is measured on day one with `SlothBox.Eval`.
@@ -981,7 +982,7 @@ The query runs in a transaction that first runs `SET LOCAL hnsw.ef_search = 100`
 ### 6.4 Safe move
 
 1. Insert the action as `pending` (from, to, sha256, kind, `before`). In the same transaction, the file row takes its new status, type, category, title, review reason and receipt fields.
-2. **Same drive:** `File.Move`. **Different drive, and every `copy` action:** copy to the action's own temp file, `<to>.<action id>.slothbox-tmp`, created exclusively while the original is held open against writers, check its hash, then rename to `<to>`. An existing `<to>` is never overwritten, and a temp file left by another action is left alone.
+2. **Same drive:** `File.Move`. **Different drive, and every `copy` action:** copy to the action's own temp file, `<to>.<action id>.slothbox-tmp`, created exclusively while the original is held open against writers, check its hash, then rename to `<to>`. An existing `<to>` is never overwritten, and a temp file left by another action is left alone. The copy carries the original's `Zone.Identifier` stream (the mark of the web), as a move on one drive does, so opening a filed download still goes through SmartScreen and Protected View; an output drive without streams (not NTFS) cannot keep it.
 3. Delete the original. Skipped for `copy` actions (copy-only folders). The original is checked again just before it goes: it must open exclusively and still have the recorded hash. If it cannot be deleted (another program has it open) or was written since the copy (its newer content stays), the verified copy is removed and the action fails: nothing has moved.
 4. Mark the action `done` and update `files.current_path`. A `failed` action puts back the file's `before` fields.
 
@@ -1034,6 +1035,9 @@ On startup, each `pending` action is resolved:
 
 **Fix from the UI**
 - Changing a file's type or category is a normal `move` action, so it can be undone.
+- A change that leaves the file's name and folder as they are (for example only the payment method) updates the fields without a move, under the same per-file lock and checks as a move (6.4), so it adds no action to undo. A file does not clash with its own name, so a `-2` file keeps its suffix.
+- A change that changes nothing is refused with "Nothing to change.": answering as if it had would offer an Undo that reverses the file's previous filing.
+- Only filed files and Needs review items can be refiled. A receipt needs a date and an amount (above 0, below 10,000,000,000); a missing currency takes the default (5.2) and any other must be a 3-letter code. A moved file, and one whose title or category changed in place, is embedded again (5.6).
 - Needs review items are resolved the same way.
 
 **Un-ignore**
@@ -1053,6 +1057,8 @@ Seeded on first run. Users can edit, rename or add more on the Categories page (
 ### 6.8 Laziness meter
 
 - Computed from each file's first filing: `actions` with kind `move` or `copy`, status `done` and no `before` snapshot. Refiles do not count again. Undone files are excluded.
+- **Files filed** counts files that are filed or in Needs review (SlothBox moved them out of the way). Duplicates are counted as caught, not as filed. **Receipts logged** counts filed receipts; their totals are per currency.
+- Days and weeks are the laptop's local time. The bars always show Monday to Sunday of the current week, whatever the range.
 - **Per file:** receipt 30 s, screenshot 15 s, document 15 s, other 5 s. Editable in Settings.
 - **Ranges:** today, this week (Monday to Sunday) and all time.
 - **Figures:** files filed, minutes saved, receipts logged with their total amount per currency, and duplicates caught.
@@ -1367,11 +1373,14 @@ output-folder check is deferred until the contract supports it.
 2. A confirm dialog follows: "Undo 12 actions since 10:30?" with [Undo 12 actions] [Cancel].
 3. Toast: "Undone 12 actions".
 
-**Track U integration note:** the fixed contract returns the action count only
-after undo executes. Until a preview/count operation is available, the
-confirmation says "Undo actions since {time}?" with [Undo actions] [Cancel],
-then reports the actual returned count. It never counts visible activity rows
-as actions. Any failed results are shown separately with their reasons.
+**Preview count:** `GET /api/undo/since?since=` answers `{ actions }`: how
+many done actions since that time Undo since would reverse. Actions already
+undone are not counted, and a refile counts as its own action. The confirm
+dialog shows this number; with 0 there is nothing to undo since that time.
+It is a preview: a file changed after filing is refused when the undo runs,
+so the toast reports the count actually undone, and any failed results are
+shown separately with their reasons. It never counts visible activity rows
+as actions.
 
 **Empty state:** "Nothing filed yet. Save a file to a watched folder, take a screenshot, or send one from your phone." with [Show phone QR code].
 
@@ -1405,7 +1414,7 @@ One file at a time.
 - **File it:**
   - Disabled until the fields that triggered review are filled, for example Date for `missing_date`.
   - It runs a normal refile (undoable). The next file slides in. Toast: "Filed to Receipts / Bills and recharges" with [Undo].
-- **Skip for now** moves the file to the end of the queue. It stays in `Needs review`.
+- **Skip for now** moves the file to the end of the queue. It stays in `Needs review`. The queue is ordered by when each item entered review or was last skipped.
 - **Reasons** use the copy in Section 7.6.
 - **Empty state:** "Nothing needs you. SlothBox handled everything."
 
@@ -1610,9 +1619,10 @@ Opens from the right, 440 px wide, over any page.
 - **Error toasts** stay until dismissed.
 - **Any toast after a move** includes [Undo].
 
-**Track U integration note:** the fixed Track 0 `StatusDto` has no drive-full
-signal. That banner awaits an explicit contract field; the UI does not infer it
-from a free-text service message.
+**Track U integration note:** `StatusDto.pauseReason` is the explicit signal
+for these banners: `drive_full` for Drive full, `gemma_offline` for Gemma
+offline or a missing model, `user` for Paused. The UI does not infer them from
+a free-text service message.
 
 ### 7.5 Components
 
@@ -1841,15 +1851,16 @@ src/SlothBox.Web/
 |---|---|---|
 | GET | `/status` | Gemma, models, database, queue counts, paused and why (`pauseReason`: `user`, `drive_full`, `gemma_offline` or null), setup complete, average seconds per file today |
 | POST | `/pause`, `/resume` | Pause or resume the worker |
-| GET | `/activity?cursor=&limit=50` | Activity feed, newest first |
+| GET | `/activity?cursor=&limit=50` | Activity feed, newest first: one row per file with a done action, by its latest action. `cursor` is the previous page's `nextCursor`; `limit` is 1 to 200 |
 | GET | `/stats/laziness?range=today\|week\|all` | Meter figures and the 7-day bars |
 | GET | `/files/{id}` | Details, receipt fields, action history |
-| GET | `/files/{id}/thumb` | 256 px thumbnail |
+| GET | `/files/{id}/thumb` | 256 px thumbnail, images only, cached in `_cache\thumbs` (6.1) |
 | GET | `/files/{id}/preview` | Larger image preview, images only |
 | POST | `/files/{id}/open`, `/files/{id}/reveal` | Open with the default app; show in Explorer |
 | POST | `/files/{id}/undo` | Undo one file |
-| POST | `/files/{id}/refile` | Body `{ type, categoryId, title?, receipt? }`; resolves Needs review too |
+| POST | `/files/{id}/refile` | Body `{ type, categoryId, title?, receipt? }`; resolves Needs review too. 400 when the change cannot be filed or changes nothing, 409 when the file cannot be refiled now (6.6) |
 | POST | `/undo/last`, `/undo/since` | Body for since: `{ since }`; returns the count undone |
+| GET | `/undo/since?since=` | Preview: how many actions Undo since would reverse (7.4.2) |
 | GET | `/review` | Needs review items with reason codes |
 | POST | `/review/{id}/skip` | Move to the end of the review list |
 | GET | `/search?q=&type=&categoryId=&from=&to=` | Hybrid search; each hit has `matchedWords` and `matchedMeaning` |
@@ -1885,7 +1896,7 @@ src/SlothBox.Web/
 | `file.undone` | `fileId` |
 | `file.refiled` | Activity item |
 | `queue.changed` | `{ waiting, processing }` |
-| `status.changed` | Same shape as `GET /status` |
+| `status.changed` | Same shape as `GET /status`; sent when the worker pauses or resumes, so a page learns `pauseReason` |
 | `folder.tidy-progress` | `{ folderId, done, total }` |
 
 **Example activity item**
