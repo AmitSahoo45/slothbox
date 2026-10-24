@@ -6,23 +6,6 @@ public static class EndpointCases
 
     public static IEnumerable<object[]> All =>
     [
-        ["GET", "/api/status", ""],
-        ["POST", "/api/pause", ""],
-        ["POST", "/api/resume", ""],
-        ["GET", "/api/activity?limit=50", ""],
-        ["GET", "/api/stats/laziness?range=week", ""],
-        ["GET", $"/api/files/{FileId}", ""],
-        ["GET", $"/api/files/{FileId}/thumb", ""],
-        ["GET", $"/api/files/{FileId}/preview", ""],
-        ["POST", $"/api/files/{FileId}/open", ""],
-        ["POST", $"/api/files/{FileId}/reveal", ""],
-        ["POST", $"/api/files/{FileId}/undo", ""],
-        ["POST", $"/api/files/{FileId}/refile", """{"type":"receipt","categoryId":1,"title":"Example","receipt":{"vendor":"Example","date":"2026-10-20","amount":10,"currency":"INR","paymentMethod":"cash"}}"""],
-        ["POST", "/api/undo/last", ""],
-        ["POST", "/api/undo/since", """{"since":"2026-10-20T00:00:00Z"}"""],
-        ["GET", "/api/review", ""],
-        ["POST", $"/api/review/{FileId}/skip", ""],
-        ["GET", "/api/search?q=example&type=document&from=2026-10-01&to=2026-10-20", ""],
         ["GET", "/api/receipts?month=2026-10", ""],
         ["GET", "/api/receipts/export.csv?month=2026-10", ""],
         ["GET", "/api/categories", ""],
@@ -43,7 +26,6 @@ public static class EndpointCases
         ["GET", "/api/phone", ""],
         ["POST", "/api/phone/rotate", ""],
         ["GET", "/api/ignored", ""],
-        ["DELETE", "/api/ignored/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", ""],
-        ["POST", "/api/search-data/rebuild", ""]
+        ["DELETE", "/api/ignored/aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", ""]
     ];
 }

@@ -10,25 +10,8 @@ internal static class StubEndpoints
     internal static void Map(WebApplication app)
     {
         var api = app.MapGroup("/api").WithTags("Dashboard");
-        Document<StatusDto>(api.MapGet("/status", NotImplemented), "GetStatus");
-        Document<StatusDto>(api.MapPost("/pause", NotImplemented), "Pause");
-        Document<StatusDto>(api.MapPost("/resume", NotImplemented), "Resume");
-        Document<ActivityPageDto>(api.MapGet("/activity", (string? cursor, int? limit) => NotImplemented()), "GetActivity");
-        Document<LazinessStatsDto>(api.MapGet("/stats/laziness", (string? range) => NotImplemented()), "GetLazinessStats");
-        Document<FileDetailsDto>(api.MapGet("/files/{id:guid}", (Guid id) => NotImplemented()), "GetFile");
-        Binary(api.MapGet("/files/{id:guid}/thumb", (Guid id) => NotImplemented()), "GetThumbnail", "image/jpeg");
-        Binary(api.MapGet("/files/{id:guid}/preview", (Guid id) => NotImplemented()), "GetPreview", "image/jpeg");
-        Document<MutationResultDto>(api.MapPost("/files/{id:guid}/open", (Guid id) => NotImplemented()), "OpenFile");
-        Document<MutationResultDto>(api.MapPost("/files/{id:guid}/reveal", (Guid id) => NotImplemented()), "RevealFile");
-        Document<UndoResultDto>(api.MapPost("/files/{id:guid}/undo", (Guid id) => NotImplemented()), "UndoFile");
-        Document<FileDetailsDto>(api.MapPost("/files/{id:guid}/refile",
-            (Guid id, RefileRequest request) => NotImplemented()), "Refile");
-        Document<UndoResultDto>(api.MapPost("/undo/last", NotImplemented), "UndoLast");
-        Document<UndoBatchResultDto>(api.MapPost("/undo/since", (UndoSinceRequest request) => NotImplemented()), "UndoSince");
-        Document<IReadOnlyList<ReviewItemDto>>(api.MapGet("/review", NotImplemented), "GetReview");
-        Document<MutationResultDto>(api.MapPost("/review/{id:guid}/skip", (Guid id) => NotImplemented()), "SkipReview");
-        Document<SearchResultDto>(api.MapGet("/search",
-            (string? q, string? type, int? categoryId, DateOnly? from, DateOnly? to) => NotImplemented()), "Search");
+        Document<SearchResultDto>(api.MapGet("/search", SearchEndpoints.Search)
+            .ProducesProblem(StatusCodes.Status400BadRequest), "Search");
         Document<ReceiptsDto>(api.MapGet("/receipts", (string? month) => NotImplemented()), "GetReceipts");
         Binary(api.MapGet("/receipts/export.csv", (string? month) => NotImplemented()), "ExportReceipts", "text/csv");
         Document<IReadOnlyList<CategoryDto>>(api.MapGet("/categories", NotImplemented), "GetCategories");
@@ -52,16 +35,14 @@ internal static class StubEndpoints
         Document<PhoneDto>(api.MapPost("/phone/rotate", NotImplemented), "RotatePhone");
         Document<IReadOnlyList<IgnoredFileDto>>(api.MapGet("/ignored", NotImplemented), "GetIgnored");
         Document<MutationResultDto>(api.MapDelete("/ignored/{sha256}", (string sha256) => NotImplemented()), "AllowIgnored");
-        Document<RebuildResultDto>(api.MapPost("/search-data/rebuild", NotImplemented), "RebuildSearchData");
+        Document<RebuildResultDto>(api.MapPost("/search-data/rebuild", SearchEndpoints.Rebuild), "RebuildSearchData");
 
-        app.MapGet("/events", () => Results.Text(": ready\n\n", "text/event-stream"))
-            .WithName("GetEvents").WithTags("Events").Produces<string>(200, "text/event-stream");
     }
 
-    private static void Document<T>(RouteHandlerBuilder route, string name) =>
+    internal static RouteHandlerBuilder Document<T>(RouteHandlerBuilder route, string name) =>
         route.WithName(name).Produces<T>().ProducesProblem(StatusCodes.Status501NotImplemented);
 
-    private static void Binary(RouteHandlerBuilder route, string name, string contentType)
+    internal static RouteHandlerBuilder Binary(RouteHandlerBuilder route, string name, string contentType)
     {
         route.WithName(name).ProducesProblem(StatusCodes.Status501NotImplemented);
         if (contentType == "text/csv")
@@ -73,5 +54,6 @@ internal static class StubEndpoints
                     new OpenApiSchema { ContentMediaType = contentType };
                 return Task.CompletedTask;
             });
+        return route;
     }
 }

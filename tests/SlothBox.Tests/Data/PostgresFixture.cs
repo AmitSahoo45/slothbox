@@ -1,4 +1,7 @@
+using System.Collections.Concurrent;
+using System.Data.Common;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Diagnostics;
 using Npgsql;
 using Pgvector.EntityFrameworkCore;
 using SlothBox.Data;
@@ -69,5 +72,46 @@ public sealed class TestDatabase(PostgresFixture fixture, string name, string co
 {
     public SlothBoxDbContext CreateDbContext() => new(PostgresFixture.Options(connectionString));
 
+    // The same database seen through EF Core interceptors, for tests that watch the commands sent to it.
+    public IDbContextFactory<SlothBoxDbContext> With(params IInterceptor[] interceptors) =>
+        new Intercepted(new DbContextOptionsBuilder<SlothBoxDbContext>(PostgresFixture.Options(connectionString))
+            .AddInterceptors(interceptors).Options);
+
+    private sealed class Intercepted(DbContextOptions<SlothBoxDbContext> options) : IDbContextFactory<SlothBoxDbContext>
+    {
+        public SlothBoxDbContext CreateDbContext() => new(options);
+    }
+
     public ValueTask DisposeAsync() => new(fixture.DropDatabaseAsync(name));
+}
+
+// Records the SQL of every command EF Core sends, so a test can see how many queries a request makes.
+public sealed class CommandLog : DbCommandInterceptor
+{
+    private readonly ConcurrentQueue<string> _commands = new();
+
+    public IReadOnlyList<string> Commands => [.. _commands];
+
+    public void Clear() => _commands.Clear();
+
+    public override ValueTask<InterceptionResult<DbDataReader>> ReaderExecutingAsync(DbCommand command,
+        CommandEventData eventData, InterceptionResult<DbDataReader> result, CancellationToken cancellationToken = default)
+    {
+        _commands.Enqueue(command.CommandText);
+        return base.ReaderExecutingAsync(command, eventData, result, cancellationToken);
+    }
+
+    public override ValueTask<InterceptionResult<int>> NonQueryExecutingAsync(DbCommand command,
+        CommandEventData eventData, InterceptionResult<int> result, CancellationToken cancellationToken = default)
+    {
+        _commands.Enqueue(command.CommandText);
+        return base.NonQueryExecutingAsync(command, eventData, result, cancellationToken);
+    }
+
+    public override ValueTask<InterceptionResult<object>> ScalarExecutingAsync(DbCommand command,
+        CommandEventData eventData, InterceptionResult<object> result, CancellationToken cancellationToken = default)
+    {
+        _commands.Enqueue(command.CommandText);
+        return base.ScalarExecutingAsync(command, eventData, result, cancellationToken);
+    }
 }

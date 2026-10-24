@@ -358,6 +358,23 @@ public sealed class FilePipelineTests(PostgresFixture postgres)
     }
 
     [Fact]
+    public async Task An_error_status_from_Gemma_sends_the_file_to_Needs_review_instead_of_holding_the_queue()
+    {
+        await using var h = await PipelineHarness.CreateAsync(postgres);
+        var folderId = await h.AddFolderAsync();
+        var photo = Photo(h.WatchedPath("IMG_2041.jpg"));
+        h.Analyzer.Answer = _ => throw new HttpRequestException(
+            "Response status code does not indicate success: 500 (Internal Server Error).", null,
+            System.Net.HttpStatusCode.InternalServerError);
+
+        var result = await h.Pipeline().RunAsync(PipelineHarness.JobFor(photo, folderId: folderId), Ct);
+
+        var filed = result.ShouldBeOfType<PipelineResult.Filed>();
+        (filed.File.Status, filed.File.ReviewReason, filed.File.CurrentPath)
+            .ShouldBe((FileStatus.Review, (ReviewReason?)ReviewReason.BadOutput, h.Output("Needs review", "IMG_2041.jpg")));
+    }
+
+    [Fact]
     public async Task A_failed_embedding_leaves_the_file_filed_without_a_vector()
     {
         await using var h = await PipelineHarness.CreateAsync(postgres);

@@ -1,8 +1,9 @@
+using System.Diagnostics;
 using Npgsql;
 using SlothBox.Core;
 using SlothBox.Core.Pipeline;
-using SlothBox.Core.Rules;
 using SlothBox.Server.Api;
+using SlothBox.Server.Endpoints;
 using SlothBox.Server.Events;
 
 namespace SlothBox.Server.Worker;
@@ -14,8 +15,10 @@ public sealed class PipelineWorker(
     IFilePipeline pipeline,
     ISafeMover mover,
     IDatabaseStartup database,
+    IOllamaStatus gemma,
     ISettingsStore settings,
     WorkerState state,
+    WorkerStats stats,
     ServerEvents events,
     ILogger<PipelineWorker> log,
     WorkerTiming? timing = null) : BackgroundService
@@ -76,7 +79,7 @@ public sealed class PipelineWorker(
     }
 
     // Spec 4.3: the database first (retrying while it is down), then setup, then crash recovery and the jobs a
-    // crash left behind; only then the queue.
+    // crash left behind, then Ollama and both models; only then the queue.
     private async Task StartUpAsync(CancellationToken ct)
     {
         while (true)
@@ -100,6 +103,9 @@ public sealed class PipelineWorker(
         var requeued = await jobs.RequeueInterruptedAsync(ct);
         if (requeued > 0)
             log.LogInformation("{Count} interrupted job(s) returned to the queue.", requeued);
+        // Step 7: without Ollama and both models the queue stays paused until they are there.
+        if (!(await gemma.CheckAsync(ct)).Ready)
+            state.Pause(PauseReason.GemmaOffline);
     }
 
     private async Task StepAsync(CancellationToken ct)
@@ -118,10 +124,10 @@ public sealed class PipelineWorker(
                 await state.WaitForResumeAsync(null, ct);
                 return;
             }
-            // Still paused for Gemma after the wait: try one job. Any answer but "offline" means Gemma is back.
+            // Still paused for Gemma after the wait: it ends once Ollama answers with both models pulled.
             if (await state.WaitForResumeAsync(_timing.OfflineRetry, ct) || state.Reason != PauseReason.GemmaOffline)
                 return;
-            if (await ProcessOneAsync(ct) is not (null or PipelineResult.Offline))
+            if ((await gemma.CheckAsync(ct)).Ready)
                 state.TryResume(PauseReason.GemmaOffline);
             return;
         }
@@ -137,9 +143,12 @@ public sealed class PipelineWorker(
         if (job is null)
             return null;
         PipelineResult result;
+        var watch = Stopwatch.StartNew();
         try
         {
             result = await pipeline.RunAsync(job, ct);
+            if (result is PipelineResult.Filed)
+                stats.Record(watch.Elapsed);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -231,7 +240,7 @@ public sealed class PipelineWorker(
     private static ActivityItemDto Activity(PipelineResult.Filed filed)
     {
         var file = filed.File;
-        var thumb = FileGroups.Of(file.CurrentPath) == FileGroup.Image ? $"/api/files/{file.Id}/thumb" : null;
+        var thumb = DashboardViews.ThumbUrl(file.Id, file.CurrentPath);
         return file.Status switch
         {
             FileStatus.Review => new FileReviewEvent

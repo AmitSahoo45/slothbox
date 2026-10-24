@@ -45,7 +45,6 @@ public sealed class EndpointsTests(ServerFactory factory) : IClassFixture<Server
     [Theory]
     [InlineData("PATCH", "/api/folders/1", """{"enabled":false}""")]
     [InlineData("POST", "/api/folders", """{"path":"D:\\slothbox-test","mode":"copy","tidyExisting":false}""")]
-    [InlineData("POST", "/api/files/7f3c2a9e-1b4d-4c8e-9a2f-0d6b5e4c3a21/refile", """{"type":"receipt","categoryId":1}""")]
     public async Task Optional_request_fields_can_be_omitted(string method, string path, string body)
     {
         using var client = factory.DashboardClient();
@@ -136,7 +135,7 @@ public sealed class EndpointsTests(ServerFactory factory) : IClassFixture<Server
             .Where(x => x.Name.StartsWith("/api/", StringComparison.Ordinal))
             .Sum(path => path.Value.EnumerateObject().Count(p =>
                 new[] { "get", "post", "put", "patch", "delete" }.Contains(p.Name)));
-        operations.ShouldBe(39);
+        operations.ShouldBe(40);
         var schemas = root.GetProperty("components").GetProperty("schemas");
         foreach (var name in new[] { "FileFiledEvent", "FileReviewEvent", "FileDuplicateEvent", "FileUndoneEvent",
                      "FileRefiledEvent", "QueueChangedEvent", "StatusChangedEvent", "FolderTidyProgressEvent" })

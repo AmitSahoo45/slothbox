@@ -38,6 +38,9 @@ public sealed class UndoService(
         return results;
     }
 
+    public async Task<int> CountSinceAsync(DateTimeOffset since, CancellationToken ct) =>
+        Live(await log.GetDoneSinceAsync(since, ct)).Count();
+
     // Done moves and copies not yet reversed, newest first. Each undo action reversed the newest
     // still-standing move or copy of its file that came before it.
     private static IEnumerable<FileAction> Live(IReadOnlyList<FileAction> actions)

@@ -1,8 +1,10 @@
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using SlothBox.Core;
+using SlothBox.Data;
 
 namespace SlothBox.Tests.Api;
 
@@ -28,6 +30,10 @@ public sealed class ServerFactory : WebApplicationFactory<Server.Program>
         {
             services.AddSingleton<ISettingsStore, DefaultSettings>();
             services.AddSingleton<IJobQueue, NoQueue>();
+            // The real Ollama, the real database and programs on this machine stay out of API tests.
+            services.AddSingleton<IOllamaStatus, FixedGemma>();
+            services.AddSingleton<IFileLauncher, RecordingLauncher>();
+            services.AddSingleton<IDbContextFactory<SlothBoxDbContext>, NoDatabase>();
         });
 
     public HttpClient DashboardClient()

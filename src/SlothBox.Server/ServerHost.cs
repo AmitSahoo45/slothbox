@@ -4,6 +4,7 @@ using System.Text.Json.Serialization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi;
 using Pgvector.EntityFrameworkCore;
+using SlothBox.Ai.Analyze;
 using SlothBox.Ai.Embed;
 using SlothBox.Core;
 using SlothBox.Core.Gate;
@@ -18,6 +19,7 @@ using SlothBox.Data.Files;
 using SlothBox.Data.Folders;
 using SlothBox.Data.Queue;
 using SlothBox.Server.Api;
+using SlothBox.Server.Endpoints;
 using SlothBox.Server.Events;
 using SlothBox.Server.Phone;
 using SlothBox.Server.Settings;
@@ -27,13 +29,13 @@ namespace SlothBox.Server;
 
 public static class ServerHost
 {
-    // Stands in for the Gemma analyzer until it is wired in: the worker reads it as "Gemma offline" and keeps
-    // checking, so uploads wait in the queue instead of failing.
-    private sealed class NoAnalyzerYet : IFileAnalyzer
+    // One client per Ollama caller: the base address is the Ollama URL, and the client's own timeout sits above one
+    // Gemma attempt (spec 5.4), so the per-attempt timeouts decide.
+    public static HttpClient OllamaClient(OllamaSettings ollama) => new()
     {
-        public Task<AnalysisResult> AnalyzeAsync(AnalysisRequest request, CancellationToken ct) =>
-            throw new HttpRequestException("The Gemma analyzer is not part of this build yet.");
-    }
+        BaseAddress = new Uri(ollama.Url),
+        Timeout = TimeSpan.FromSeconds(ollama.AnalyzeTimeoutSeconds + 30)
+    };
 
     public static WebApplication Build(string[] args)
     {
@@ -58,6 +60,7 @@ public static class ServerHost
         if (!builder.Environment.IsEnvironment("Testing"))
             builder.Services.AddHostedService<PipelineWorker>();
         builder.Services.AddSingleton(new PhonePage(EmbeddedUi.Files()));
+        DashboardServices.Add(builder.Services);
         builder.Services.AddProblemDetails();
         builder.Services.ConfigureHttpJsonOptions(options =>
             options.SerializerOptions.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.SnakeCaseLower)));
@@ -87,7 +90,9 @@ public static class ServerHost
         app.Use(ApiProtection.InvokeAsync);
         app.UseStatusCodePages();
         app.MapOpenApi();
+        DashboardEndpoints.Map(app);
         StubEndpoints.Map(app);
+        EventsEndpoint.Map(app);
         PhoneEndpoints.Map(app);
         EmbeddedUi.Map(app);
         return app;
@@ -103,6 +108,7 @@ public static class ServerHost
         services.AddSingleton<IActionLog, ActionLog>();
         services.AddSingleton<ICategoryRepository, CategoryRepository>();
         services.AddSingleton<IWatchedFolderRepository, WatchedFolderRepository>();
+        services.AddSingleton<Data.Search.SearchService>();
         services.AddSingleton<IFileGate>(sp => new FileGate(sp.GetRequiredService<IWatchedFolderRepository>(),
             sp.GetRequiredService<IIgnoredHashes>(), sp.GetRequiredService<IFileRepository>(),
             sp.GetRequiredService<ISettingsStore>().Current.Pipeline));
@@ -115,15 +121,13 @@ public static class ServerHost
         services.AddSingleton<IEmbedder>(sp =>
         {
             var ollama = sp.GetRequiredService<ISettingsStore>().Current.Ollama;
-            // The client's own timeout sits above the per-attempt timeouts (spec 5.4), so those decide.
-            var http = new HttpClient
-            {
-                BaseAddress = new Uri(ollama.Url),
-                Timeout = TimeSpan.FromSeconds(ollama.AnalyzeTimeoutSeconds + 30)
-            };
-            return new Embedder(http, ollama);
+            return new Embedder(OllamaClient(ollama), ollama);
         });
-        services.AddSingleton<IFileAnalyzer, NoAnalyzerYet>();
+        services.AddSingleton<IFileAnalyzer>(sp =>
+        {
+            var settings = sp.GetRequiredService<ISettingsStore>().Current;
+            return new FileAnalyzer(OllamaClient(settings.Ollama), settings.Ollama, settings.Pipeline);
+        });
         services.AddSingleton<IFilePipeline, FilePipeline>();
         services.AddSingleton<IDatabaseStartup, DatabaseStartup>();
         services.AddSingleton<WorkerState>();

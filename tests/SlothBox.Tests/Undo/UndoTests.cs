@@ -42,6 +42,8 @@ public sealed class UndoTests(PostgresFixture postgres)
         public Task CompleteAsync(long id, ActionStatus status, string? error, CancellationToken ct) =>
             log.CompleteAsync(id, status, error, ct);
         public Task<IReadOnlyList<FileAction>> GetPendingAsync(CancellationToken ct) => log.GetPendingAsync(ct);
+        public Task<bool> UpdateFieldsAsync(Guid fileId, string path, FileSnapshot before, FileSnapshot after,
+            CancellationToken ct) => log.UpdateFieldsAsync(fileId, path, before, after, ct);
     }
 
     // A first filing: the file is recorded where it arrived, then moved (or copied) into the output folder.

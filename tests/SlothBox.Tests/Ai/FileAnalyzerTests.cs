@@ -390,15 +390,47 @@ public sealed class FileAnalyzerTests
         ollama.Requests.Count.ShouldBe(2);
     }
 
-    [Fact]
-    public async Task Ollama_refusing_the_call_is_an_error_not_a_review()
+    [Theory]
+    [InlineData(HttpStatusCode.InternalServerError)]
+    [InlineData(HttpStatusCode.NotFound)]
+    [InlineData(HttpStatusCode.BadRequest)]
+    public async Task An_error_status_from_Ollama_is_tried_once_more_then_needs_review(HttpStatusCode status)
     {
-        // Section 9: Ollama down or out of memory pauses the queue; the file is not judged.
-        var ollama = new FakeOllama((_, _) =>
-            Task.FromResult(new HttpResponseMessage(HttpStatusCode.InternalServerError)));
+        // One file Ollama cannot handle must not hold the queue: only a failed connection means Gemma is offline.
+        var ollama = new FakeOllama((_, _) => Task.FromResult(new HttpResponseMessage(status)));
 
-        await Should.ThrowAsync<HttpRequestException>(() =>
+        var result = await Analyzer(ollama).AnalyzeAsync(Request(new FileContent.Text("Jio 599")), Ct);
+
+        result.ShouldBe(new AnalysisResult.NeedsReview(ReviewReason.BadOutput));
+        ollama.Requests.Count.ShouldBe(2);
+    }
+
+    [Fact]
+    public async Task A_failed_connection_is_an_error_so_the_queue_waits_for_Gemma()
+    {
+        var ollama = new FakeOllama((_, _) => throw new HttpRequestException(HttpRequestError.ConnectionError,
+            "No connection could be made because the target machine actively refused it."));
+
+        var thrown = await Should.ThrowAsync<HttpRequestException>(() =>
             Analyzer(ollama).AnalyzeAsync(Request(new FileContent.Text("Jio 599")), Ct));
+
+        thrown.StatusCode.ShouldBeNull();
         ollama.Requests.Count.ShouldBe(1);
+    }
+
+    [Theory]
+    [InlineData("UPI", PaymentMethod.Upi)]
+    [InlineData("Card", PaymentMethod.Card)]
+    [InlineData(" cash ", PaymentMethod.Cash)]
+    [InlineData("NetBanking", PaymentMethod.Netbanking)]
+    [InlineData("cheque", PaymentMethod.Unknown)]
+    public async Task A_payment_method_is_matched_without_regard_to_case(string method, PaymentMethod expected)
+    {
+        var answer = JioReceipt.Replace("\"payment_method\": \"upi\"", $"\"payment_method\": \"{method}\"");
+
+        var result = await Analyzer(FakeOllama.Answering(answer))
+            .AnalyzeAsync(Request(new FileContent.Text("Jio 599")), Ct);
+
+        result.ShouldBeOfType<AnalysisResult.Success>().Analysis.Receipt!.PaymentMethod.ShouldBe(expected);
     }
 }

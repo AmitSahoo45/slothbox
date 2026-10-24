@@ -1,4 +1,6 @@
+using Microsoft.EntityFrameworkCore;
 using SlothBox.Core;
+using SlothBox.Data;
 
 namespace SlothBox.Tests;
 
@@ -32,9 +34,43 @@ internal sealed class FakeIgnoredHashes : IIgnoredHashes
     public Task<IReadOnlyList<IgnoredHash>> ListAsync(CancellationToken ct) => throw new NotSupportedException();
 }
 
+// Ollama as a test sets it: answering with both models pulled, unless told otherwise.
+internal sealed class FixedGemma : IOllamaStatus
+{
+    public static GemmaState Ready(bool visionOnGpu = true) => new(true, null,
+        new ModelState("gemma4:e4b", true, true, visionOnGpu), new ModelState("embeddinggemma", true, true, false));
+
+    public GemmaState State { get; set; } = Ready();
+
+    public Task<GemmaState> CheckAsync(CancellationToken ct) => Task.FromResult(State);
+}
+
+// API tests that have no test database get this: anything reaching for a database fails at once, instead of
+// finding the owner's real one on 127.0.0.1:5433.
+internal sealed class NoDatabase : IDbContextFactory<SlothBoxDbContext>
+{
+    public SlothBoxDbContext CreateDbContext() =>
+        throw new InvalidOperationException("This test has no database.");
+}
+
+// Records what the dashboard asked to open or show, instead of starting programs.
+internal sealed class RecordingLauncher : IFileLauncher
+{
+    public List<(string Action, string Path)> Calls { get; } = [];
+
+    public void Open(string path) => Calls.Add(("open", path));
+    public void Reveal(string path) => Calls.Add(("reveal", path));
+}
+
 internal sealed class FixedSettings(SlothBoxSettings settings) : ISettingsStore
 {
-    public SlothBoxSettings Current { get; set; } = settings;
+    private volatile SlothBoxSettings _current = settings;
+
+    public SlothBoxSettings Current
+    {
+        get => _current;
+        set => _current = value;
+    }
 }
 
 // Answers every analysis with the scripted result and keeps the requests it saw.

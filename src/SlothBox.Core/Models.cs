@@ -34,6 +34,15 @@ public sealed record FileAction(long Id, Guid FileId, ActionKind Kind, string Fr
     ActionStatus Status, string? Error, FileSnapshot? Before, DateTimeOffset CreatedAt, DateTimeOffset UpdatedAt,
     DateTimeOffset? CompletedAt);
 public sealed record IgnoredHash(string Sha256, string Reason, DateTimeOffset CreatedAt);
+
+// What Ollama reports for one model: pulled, loaded, and loaded wholly on the GPU.
+public sealed record ModelState(string Name, bool Present, bool Loaded, bool OnGpu);
+
+// Spec 4.3 step 7: SlothBox files only while Ollama answers and both models are pulled.
+public sealed record GemmaState(bool Reachable, string? Message, ModelState Vision, ModelState Embedding)
+{
+    public bool Ready => Reachable && Vision.Present && Embedding.Present;
+}
 public sealed record SearchQuery(string Query, FileKind? Type = null, int? CategoryId = null,
     DateOnly? From = null, DateOnly? To = null);
 public sealed record SearchHit(FileRecord File, double Score, bool MatchedWords, bool MatchedMeaning);

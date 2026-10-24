@@ -87,10 +87,15 @@ public sealed class FilePipeline(
                 result = await analyzer.AnalyzeAsync(
                     new AnalysisRequest(Path.GetFileName(path), label, forGemma, categoryList), ct);
             }
-            catch (HttpRequestException e)
+            catch (HttpRequestException e) when (e.StatusCode is null)
             {
                 // Ollama, or Docker, is not running: nothing is written and the job waits (spec 9).
                 return new PipelineResult.Offline(e.Message);
+            }
+            catch (HttpRequestException)
+            {
+                // Ollama answered, with an error for this file: it goes to Needs review instead of holding the queue.
+                result = new AnalysisResult.NeedsReview(ReviewReason.BadOutput);
             }
             var validation = ReviewRules.Check(result, categoryList, pipeline.DefaultCurrency, route.Kind);
             analysis = validation.Analysis ?? new Analysis(FileKind.Unknown, "", "", "", "", null);
@@ -169,24 +174,10 @@ public sealed class FilePipeline(
             return new PipelineResult.Failed(record.Id, moved.Error ?? "The move failed.", moved.Failure);
 
         var filed = record with { CurrentPath = moved.Destination! };
-        var embedded = filing.Status == FileStatus.Filed && await EmbedAsync(filed, filing.Category, ct);
+        // Step 6: only filed files are indexed; a Needs review item is indexed when it is filed (spec 5.1).
+        var embedded = filing.Status == FileStatus.Filed &&
+                       await FileIndex.EmbedAsync(filed, filing.Category, embedder, files, settings.Current.Pipeline, ct);
         return new PipelineResult.Filed(filed, filing.Category, filing.Folder?.Label, embedded);
-    }
-
-    // Step 6 (spec 5.6). On failure the file stays filed with no vector; "Rebuild missing search data" fills it in.
-    private async Task<bool> EmbedAsync(FileRecord file, string category, CancellationToken ct)
-    {
-        var body = $"{category}. {file.Caption} {StoredText.Cut(file.ExtractedText, settings.Current.Pipeline.EmbedTextChars)}"
-            .Trim();
-        try
-        {
-            await files.SaveEmbeddingAsync(file.Id, await embedder.EmbedDocumentAsync(file.Title, body, ct), ct);
-            return true;
-        }
-        catch (Exception e) when (e is TimeoutException or HttpRequestException or InvalidOperationException)
-        {
-            return false;
-        }
     }
 
     // The validated category by name, falling back to the type's system row ("Other").

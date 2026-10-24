@@ -44,6 +44,7 @@ public sealed record FileDetailsDto(ActivityItemDto File, string OriginalName, s
     ReceiptDto? Receipt, IReadOnlyList<ActionDto> History);
 public sealed record UndoResultDto(Guid FileId, bool Success, string? RestoredPath, string? Reason);
 public sealed record UndoBatchResultDto(int Undone, IReadOnlyList<UndoResultDto> Results);
+public sealed record UndoSincePreviewDto(int Actions);
 public sealed record ReviewItemDto(FileDetailsDto File, ReviewReason Reason);
 public sealed record SearchHitDto(FileDetailsDto File, double Score, bool MatchedWords, bool MatchedMeaning);
 public sealed record SearchResultDto(IReadOnlyList<SearchHitDto> Items);
