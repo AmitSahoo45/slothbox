@@ -70,7 +70,53 @@ test('overlapping selected watched folders cannot advance to completion', async 
   })))
   render(<App />)
   fireEvent.click(await screen.findByRole('button', { name: 'Continue' }))
+  expect(await screen.findByText('Which folders should SlothBox watch?')).toBeVisible()
   fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
   expect(await screen.findByText('Watched folders cannot contain each other.')).toBeVisible()
   expect(screen.queryByRole('button', { name: 'Finish setup' })).not.toBeInTheDocument()
+})
+
+test('step 1 asks the output-folder check before Continue and shows its reason when refused', async () => {
+  const paths: string[] = []
+  server.use(http.post('*/api/setup/check-output', async ({ request }) => {
+    const { path } = await request.json() as Schema['CheckFolderRequest']
+    paths.push(path)
+    return HttpResponse.json(path === 'D:\\Watched\\Filed'
+      ? { accepted: false, reason: 'SlothBox would refile its own files. Pick a folder outside the watched folders.' }
+      : { accepted: true, reason: null })
+  }))
+  render(<App />)
+  const output = await screen.findByLabelText('Output folder')
+  fireEvent.change(output, { target: { value: ' D:\\Watched\\Filed ' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
+  expect(await screen.findByText('SlothBox would refile its own files. Pick a folder outside the watched folders.')).toBeVisible()
+  expect(screen.getByText('Where should SlothBox put sorted files?')).toBeVisible()
+  fireEvent.change(output, { target: { value: 'D:\\Filed-Test' } })
+  expect(screen.queryByText('SlothBox would refile its own files. Pick a folder outside the watched folders.')).not.toBeInTheDocument()
+  fireEvent.click(screen.getByRole('button', { name: 'Continue' }))
+  expect(await screen.findByText('Which folders should SlothBox watch?')).toBeVisible()
+  expect(paths).toEqual(['D:\\Watched\\Filed', 'D:\\Filed-Test'])
+})
+
+test('a refused completion shows the API title and stays on the checks', async () => {
+  server.use(http.post('*/api/setup/complete', () => HttpResponse.json(
+    { title: 'Sample input: Pick a folder inside the drive.', status: 400 }, { status: 400 })))
+  render(<App />)
+  fireEvent.click(await checks())
+  expect(await screen.findByText('Sample input: Pick a folder inside the drive.')).toBeVisible()
+  expect(screen.getByRole('button', { name: 'Finish setup' })).toBeEnabled()
+})
+
+test('a completion refused because setup already finished leaves for Today', async () => {
+  let finished = false
+  server.use(
+    http.get('*/api/setup', () => HttpResponse.json({ ...responses.GetSetup, complete: finished })),
+    http.post('*/api/setup/complete', () => {
+      finished = true
+      return HttpResponse.json({ title: "Setup is already finished. The output folder can't be changed in this version.", status: 409 }, { status: 409 })
+    }),
+  )
+  render(<App />)
+  fireEvent.click(await checks())
+  expect(await screen.findByRole('heading', { name: 'Today', level: 1 })).toBeVisible()
 })

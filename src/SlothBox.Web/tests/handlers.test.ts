@@ -21,6 +21,7 @@ const bodies: Record<string, unknown> = {
   UpdateFolder: { enabled: true, mode: 'copy', label: 'Sample' },
   UpdateSettings: { startAtLogin: false, laziness, ollamaUrl: 'http://127.0.0.1:11436' },
   CompleteSetup: { outputRoot: 'D:\\SlothBox-Sample\\Filed', folders: [], finishAnyway: false },
+  CheckOutputFolder: { path: 'D:\\SlothBox-Sample\\Filed' },
 }
 const mediaTypes: Record<string, string> = {
   GetThumbnail: 'image/jpeg', GetPreview: 'image/jpeg',

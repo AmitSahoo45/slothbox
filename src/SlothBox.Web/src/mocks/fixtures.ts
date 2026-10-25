@@ -104,6 +104,7 @@ export const responses = {
   UpdateSettings: settings,
   GetSetup: setup,
   CompleteSetup: setup,
+  CheckOutputFolder: { accepted: true, reason: null },
   GetPhone: phone,
   RotatePhone: { ...phone, url: 'http://127.0.0.1:5081/u/rotated-sample-token' },
   GetIgnored: [{ sha256: 'a'.repeat(64), fileName: 'sample.jpg', at, reason: 'Previously undone' }],

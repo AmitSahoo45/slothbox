@@ -1,22 +1,22 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import * as Menu from '@radix-ui/react-dropdown-menu'
 import { skipToken, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { MoreHorizontal } from 'lucide-react'
-import { request } from '../api/client'
+import { ApiError, request } from '../api/client'
 import { requireSuccess } from '../api/file-actions'
 import type { Schema } from '../api/types'
 import { Button } from './Button'
 import { Modal } from './Modal'
 import { useToasts } from './toast-context'
 
-export function FolderRow({ folder }: { folder: Schema['FolderDto'] }) {
+export function FolderRow({ folder, nativePicker }: { folder: Schema['FolderDto']; nativePicker: boolean }) {
   const client = useQueryClient()
   const { notify } = useToasts()
-  const [dialog, setDialog] = useState<'tidy' | 'rename' | 'remove' | null>(null)
+  const [dialog, setDialog] = useState<'tidy' | 'rename' | 'remove' | 'locate' | null>(null)
   const [label, setLabel] = useState(folder.label)
   const menuButton = useRef<HTMLButtonElement>(null)
   const [fromMenu, setFromMenu] = useState(false)
-  const progressKey = ['folder-progress', folder.id]
+  const progressKey = ['folder-progress', Number(folder.id)]
   const progress = useQuery<Schema['FolderTidyProgressEvent']>({ queryKey: progressKey, queryFn: skipToken })
   const tidying = Boolean(progress.data && Number(progress.data.done) < Number(progress.data.total))
   const refresh = () => client.invalidateQueries({ queryKey: ['folders'] })
@@ -47,7 +47,10 @@ export function FolderRow({ folder }: { folder: Schema['FolderDto'] }) {
           <option value="move">Move</option><option value="copy">Copy only</option>
         </select></div>
         {folder.isCloud && <span className="field-hint">Copy only (cloud folder)</span>}
-        {folder.missing ? <Button aria-label={`Remove ${folder.label}`} onClick={() => setDialog('remove')}>Remove</Button> : <>
+        {folder.missing ? <>
+          <Button aria-label={`Locate ${folder.label}`} onClick={() => setDialog('locate')}>Locate</Button>
+          <Button aria-label={`Remove ${folder.label}`} onClick={() => setDialog('remove')}>Remove</Button>
+        </> : <>
           {Number(folder.baselineCount) > 0 && <Button disabled={busy || tidying} onClick={() => { setFromMenu(false); setDialog('tidy') }}>Tidy them now</Button>}
           <Menu.Root><Menu.Trigger asChild><Button ref={menuButton} aria-label={`More for ${folder.label}`} disabled={busy}><MoreHorizontal size={18} /></Button></Menu.Trigger>
             <Menu.Portal><Menu.Content className="menu" align="end">
@@ -58,7 +61,8 @@ export function FolderRow({ folder }: { folder: Schema['FolderDto'] }) {
         </>}
       </div>
     </div>
-    {dialog && <Modal title={dialog === 'tidy' ? `Tidy ${folder.baselineCount} files?` : dialog === 'rename' ? 'Rename label' : `Stop watching ${folder.label}?`}
+    {dialog === 'locate' && <LocateFolder folder={folder} nativePicker={nativePicker} onClose={() => setDialog(null)} />}
+    {dialog && dialog !== 'locate' && <Modal title={dialog === 'tidy' ? `Tidy ${folder.baselineCount} files?` : dialog === 'rename' ? 'Rename label' : `Stop watching ${folder.label}?`}
       description={dialog === 'tidy' ? 'You can undo this with Undo since on Today.' : dialog === 'rename' ? 'This changes the label in SlothBox.' : 'Already-filed files will stay where they are.'} onClose={() => { setDialog(null); setFromMenu(false) }} returnFocus={fromMenu ? menuButton : undefined} busy={busy}>
       {dialog === 'rename' ? <form onSubmit={event => { event.preventDefault(); if (label.trim()) update.mutate({ label: label.trim() }) }}>
         <label className="field">Folder label<input value={label} onChange={event => setLabel(event.target.value)} disabled={busy} /></label>
@@ -66,4 +70,43 @@ export function FolderRow({ folder }: { folder: Schema['FolderDto'] }) {
       </form> : <div className="form-actions"><Button variant={dialog === 'tidy' ? 'primary' : 'destructive'} busy={busy} onClick={() => dialog === 'tidy' ? tidy.mutate() : remove.mutate()}>{dialog === 'tidy' ? 'Tidy files' : 'Stop watching'}</Button></div>}
     </Modal>}
   </article>
+}
+
+// Locate points a missing folder at its new place (spec 4.5); the API applies the folder rules to the new path.
+function LocateFolder({ folder, nativePicker, onClose }: { folder: Schema['FolderDto']; nativePicker: boolean; onClose: () => void }) {
+  const client = useQueryClient()
+  const { notify } = useToasts()
+  const [path, setPath] = useState('')
+  const started = useRef(false)
+  const locate = useMutation({
+    mutationFn: (selected: string) => request('patch', '/api/folders/{id}', { path: { id: Number(folder.id) }, body: { path: selected.trim() } }),
+    onSuccess: async result => { onClose(); await client.invalidateQueries({ queryKey: ['folders'] }); notify({ message: `Watching ${result.label}` }) },
+    onError: error => {
+      // 409: the folder is still at its path, so this row was out of date; the next sweep watches it again.
+      if (!(error instanceof ApiError) || error.status !== 409) return
+      onClose(); notify({ message: error.message, tone: 'error' })
+      void client.invalidateQueries({ queryKey: ['folders'] })
+    },
+  })
+  const pick = useMutation({ mutationFn: () => request('post', '/api/system/pick-folder'),
+    onSuccess: value => { if (value.path) { setPath(value.path); locate.mutate(value.path) } else onClose() } })
+  // Open the native picker once; Strict Mode may repeat effect setup.
+  useEffect(() => {
+    if (!nativePicker || started.current) return
+    started.current = true
+    pick.mutate()
+  }, [nativePicker, pick])
+  // A failed folder dialog falls back to a typed path (spec 4.5).
+  const typed = !nativePicker || pick.isError
+  const busy = pick.isPending || locate.isPending
+  const error = locate.error ?? pick.error
+  return <Modal title={`Locate ${folder.label}`} description="Choose where this folder is now." onClose={onClose} busy={busy}>
+    {busy && <p role="status">{pick.isPending ? 'Choose a folder in the folder dialog…' : 'Locating folder…'}</p>}
+    {error && <p className="query-error" role="alert">{error.message}</p>}
+    {typed ? <form onSubmit={event => { event.preventDefault(); if (path.trim()) locate.mutate(path) }}>
+      <label className="field">Folder path<input value={path} disabled={busy} onChange={event => { setPath(event.target.value); locate.reset() }} /></label>
+      <div className="form-actions"><Button type="submit" variant="primary" disabled={!path.trim()} busy={locate.isPending}>Locate folder</Button></div>
+    </form> : <>{path && <p><code>{path}</code></p>}
+      {!busy && <Button onClick={() => { locate.reset(); pick.mutate() }}>Pick another folder</Button>}</>}
+  </Modal>
 }

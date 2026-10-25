@@ -204,13 +204,14 @@ test('Pause sends the protection header, updates status and offers Resume', asyn
   fireEvent.click(screen.getAllByRole('button', { name: 'Resume' })[0])
   await screen.findByRole('button', { name: 'Pause' })
 })
-test('failed mutations show the ProblemDetails message without changing status', async () => {
+test('failed mutations show the ProblemDetails title without changing status', async () => {
   server.use(http.post('*/api/pause', () => HttpResponse.json(
-    { title: 'Cannot pause', detail: 'The database is unavailable.' }, { status: 503 })))
+    { title: 'The database is unavailable.', detail: 'Connection refused (synthetic).' }, { status: 503 })))
   render(<App />)
   await waitFor(() => expect(screen.getByRole('button', { name: 'Pause' })).toBeEnabled())
   fireEvent.click(screen.getByRole('button', { name: 'Pause' }))
   expect(await screen.findByText('The database is unavailable.')).toBeVisible()
+  expect(screen.queryByText('Connection refused (synthetic).')).not.toBeInTheDocument()
   expect(screen.getByRole('button', { name: 'Pause' })).toBeEnabled()
 })
 test('unavailable status is honest, retryable and does not say services are ready', async () => {

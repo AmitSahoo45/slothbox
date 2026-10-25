@@ -516,6 +516,22 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/setup/check-output": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["CheckOutputFolder"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/phone": {
         parameters: {
             query?: never;
@@ -880,6 +896,10 @@ export interface components {
         MutationResultDto: {
             success: boolean;
             message: null | string;
+        };
+        OutputFolderCheckDto: {
+            accepted: boolean;
+            reason: null | string;
         };
         /** @enum {unknown} */
         PauseReason: "user" | "drive_full" | "gemma_offline" | null;
@@ -1247,15 +1267,6 @@ export interface operations {
                     "application/json": components["schemas"]["StatusDto"];
                 };
             };
-            /** @description Not Implemented */
-            501: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ProblemDetails"];
-                };
-            };
         };
     };
     Pause: {
@@ -1276,15 +1287,6 @@ export interface operations {
                     "application/json": components["schemas"]["StatusDto"];
                 };
             };
-            /** @description Not Implemented */
-            501: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ProblemDetails"];
-                };
-            };
         };
     };
     Resume: {
@@ -1303,15 +1305,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["StatusDto"];
-                };
-            };
-            /** @description Not Implemented */
-            501: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
         };
@@ -1339,15 +1332,6 @@ export interface operations {
             };
             /** @description Bad Request */
             400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ProblemDetails"];
-                };
-            };
-            /** @description Not Implemented */
-            501: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1386,15 +1370,6 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description Not Implemented */
-            501: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ProblemDetails"];
-                };
-            };
         };
     };
     GetFile: {
@@ -1419,15 +1394,6 @@ export interface operations {
             };
             /** @description Not Found */
             404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ProblemDetails"];
-                };
-            };
-            /** @description Not Implemented */
-            501: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1466,15 +1432,6 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description Not Implemented */
-            501: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ProblemDetails"];
-                };
-            };
         };
     };
     GetPreview: {
@@ -1499,15 +1456,6 @@ export interface operations {
             };
             /** @description Not Found */
             404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ProblemDetails"];
-                };
-            };
-            /** @description Not Implemented */
-            501: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1546,15 +1494,6 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description Not Implemented */
-            501: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ProblemDetails"];
-                };
-            };
         };
     };
     RevealFile: {
@@ -1586,15 +1525,6 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description Not Implemented */
-            501: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ProblemDetails"];
-                };
-            };
         };
     };
     UndoFile: {
@@ -1615,15 +1545,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["UndoResultDto"];
-                };
-            };
-            /** @description Not Implemented */
-            501: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
         };
@@ -1679,15 +1600,6 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description Not Implemented */
-            501: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ProblemDetails"];
-                };
-            };
         };
     };
     UndoLast: {
@@ -1706,15 +1618,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["UndoResultDto"];
-                };
-            };
-            /** @description Not Implemented */
-            501: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
         };
@@ -1781,15 +1684,6 @@ export interface operations {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
-            /** @description Not Implemented */
-            501: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ProblemDetails"];
-                };
-            };
         };
     };
     GetReview: {
@@ -1808,15 +1702,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ReviewItemDto"][];
-                };
-            };
-            /** @description Not Implemented */
-            501: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
         };
@@ -1843,15 +1728,6 @@ export interface operations {
             };
             /** @description Not Found */
             404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ProblemDetails"];
-                };
-            };
-            /** @description Not Implemented */
-            501: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -1887,15 +1763,6 @@ export interface operations {
             };
             /** @description Bad Request */
             400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ProblemDetails"];
-                };
-            };
-            /** @description Not Implemented */
-            501: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2341,8 +2208,8 @@ export interface operations {
                     "application/json": components["schemas"]["PickFolderResultDto"];
                 };
             };
-            /** @description Not Implemented */
-            501: {
+            /** @description Conflict */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2370,15 +2237,6 @@ export interface operations {
                     "application/json": components["schemas"]["SettingsDto"];
                 };
             };
-            /** @description Not Implemented */
-            501: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ProblemDetails"];
-                };
-            };
         };
     };
     UpdateSettings: {
@@ -2403,8 +2261,17 @@ export interface operations {
                     "application/json": components["schemas"]["SettingsDto"];
                 };
             };
-            /** @description Not Implemented */
-            501: {
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Conflict */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2432,15 +2299,6 @@ export interface operations {
                     "application/json": components["schemas"]["SetupDto"];
                 };
             };
-            /** @description Not Implemented */
-            501: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ProblemDetails"];
-                };
-            };
         };
     };
     CompleteSetup: {
@@ -2465,13 +2323,46 @@ export interface operations {
                     "application/json": components["schemas"]["SetupDto"];
                 };
             };
-            /** @description Not Implemented */
-            501: {
+            /** @description Bad Request */
+            400: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/problem+json": components["schemas"]["ProblemDetails"];
+                };
+            };
+        };
+    };
+    CheckOutputFolder: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CheckFolderRequest"];
+            };
+        };
+        responses: {
+            /** @description OK */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OutputFolderCheckDto"];
                 };
             };
         };
@@ -2494,15 +2385,6 @@ export interface operations {
                     "application/json": components["schemas"]["PhoneDto"];
                 };
             };
-            /** @description Not Implemented */
-            501: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ProblemDetails"];
-                };
-            };
         };
     };
     RotatePhone: {
@@ -2523,15 +2405,6 @@ export interface operations {
                     "application/json": components["schemas"]["PhoneDto"];
                 };
             };
-            /** @description Not Implemented */
-            501: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ProblemDetails"];
-                };
-            };
         };
     };
     GetIgnored: {
@@ -2550,15 +2423,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["IgnoredFileDto"][];
-                };
-            };
-            /** @description Not Implemented */
-            501: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
         };
@@ -2583,8 +2447,8 @@ export interface operations {
                     "application/json": components["schemas"]["MutationResultDto"];
                 };
             };
-            /** @description Not Implemented */
-            501: {
+            /** @description Not Found */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -2610,15 +2474,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["RebuildResultDto"];
-                };
-            };
-            /** @description Not Implemented */
-            501: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/problem+json": components["schemas"]["ProblemDetails"];
                 };
             };
         };

@@ -54,10 +54,15 @@ export function createSettingsHandlers(state: SettingsState) {
       if (denied) return denied
       const body = await request.json() as Schema['UpdateSettingsRequest']
       const seconds = ['receiptSeconds', 'screenshotSeconds', 'documentSeconds', 'otherSeconds'] as const
-      if (typeof body.startAtLogin !== 'boolean' || !body.ollamaUrl || !body.laziness || seconds.some(key => {
+      if (typeof body.startAtLogin !== 'boolean' || !body.laziness || seconds.some(key => {
         const value = Number(body.laziness[key])
         return !Number.isInteger(value) || value < 0 || value > 2147483647
-      })) return problem('Check the settings and try again.')
+      })) return problem('Use whole seconds from 0 up.')
+      let address: URL | null = null
+      try { address = new URL(body.ollamaUrl.trim()) } catch { /* Refused below. */ }
+      if (!address || !['http:', 'https:'].includes(address.protocol) || address.username || address.password || /[?#]/.test(body.ollamaUrl)) {
+        return problem('Use an http or https address, like http://127.0.0.1:11436.')
+      }
       state.settings = body
       return HttpResponse.json(state.settings)
     }),
@@ -66,7 +71,7 @@ export function createSettingsHandlers(state: SettingsState) {
       const denied = protection(request)
       if (denied) return denied
       const index = state.ignored.findIndex(file => file.sha256 === params.sha256)
-      if (index < 0) return problem('Ignored file not found', 404)
+      if (index < 0) return problem('This file is not on the ignored list.', 404)
       state.ignored.splice(index, 1)
       return HttpResponse.json({ success: true, message: null })
     }),

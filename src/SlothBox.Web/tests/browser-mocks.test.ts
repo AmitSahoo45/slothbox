@@ -119,7 +119,7 @@ test('browser search and receipt month filters use the same files as the drawer'
 })
 
 test('browser folder and setup mutations persist and rotation changes the QR with the URL', async () => {
-  server.use(...createBrowserHandlers())
+  server.use(...createBrowserHandlers({ setupComplete: false }))
   const post = async (path: string, body?: unknown) => (await fetch(`${base}/api/${path}`, {
     method: 'POST', headers: { 'X-SlothBox': '1', 'Content-Type': 'application/json' },
     body: body === undefined ? undefined : JSON.stringify(body),
@@ -145,4 +145,54 @@ test.each([
   const cleared = { paused: false, pauseReason: null, gemma: { ready: true } }
   expect(await resumed.json()).toMatchObject(cleared)
   expect(await (await fetch(`${base}/api/status`)).json()).toMatchObject(cleared)
+})
+
+test('browser setup checks the output folder and refuses a second completion', async () => {
+  server.use(...createBrowserHandlers({ setupComplete: false }))
+  const post = (path: string, body: unknown) => fetch(`${base}/api/${path}`, {
+    method: 'POST', headers: { 'X-SlothBox': '1', 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  })
+  expect((await fetch(`${base}/api/setup/check-output`, { method: 'POST', body: '{"path":"D:\\\\Filed"}' })).status).toBe(403)
+  expect(await (await post('setup/check-output', { path: 'D:\\' })).json()).toMatchObject({ accepted: false, reason: expect.any(String) })
+  expect(await (await post('setup/check-output', { path: 'D:\\Synthetic-Filed' })).json()).toEqual({ accepted: true, reason: null })
+  expect((await post('setup/complete', { outputRoot: 'D:\\Synthetic-Filed', folders: [], finishAnyway: false })).status).toBe(200)
+  const again = await post('setup/complete', { outputRoot: 'D:\\Synthetic-Filed', folders: [], finishAnyway: false })
+  expect(again.status).toBe(409)
+  expect((await again.json()).title).toContain('Setup is already finished.')
+})
+
+test('browser Locate moves only a missing folder and applies the folder rules to the new path', async () => {
+  server.use(...createBrowserHandlers())
+  const patch = (id: number | string, body: unknown) => fetch(`${base}/api/folders/${id}`, {
+    method: 'PATCH', headers: { 'X-SlothBox': '1', 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  })
+  const folders: Schema['FolderDto'][] = await (await fetch(`${base}/api/folders`)).json()
+  const present = folders.find(folder => !folder.missing)!
+  const missing = folders.find(folder => folder.missing)!
+  expect((await patch(present.id, { path: 'D:\\Synthetic-Elsewhere' })).status).toBe(409)
+  const refused = await patch(missing.id, { path: 'D:\\' })
+  expect(refused.status).toBe(400)
+  expect((await refused.json()).title).toBeTruthy()
+  const located = await (await patch(missing.id, { path: 'D:\\Synthetic-Cloud-Moved' })).json()
+  expect(located).toMatchObject({ path: 'D:\\Synthetic-Cloud-Moved', missing: false, isCloud: true, mode: 'copy' })
+  expect((await (await fetch(`${base}/api/folders`)).json()).find((folder: Schema['FolderDto']) => folder.id === missing.id)).toMatchObject({ missing: false })
+})
+
+test('browser settings and Allow again answer with the API titles', async () => {
+  server.use(...createBrowserHandlers())
+  const settings: Schema['SettingsDto'] = await (await fetch(`${base}/api/settings`)).json()
+  const put = (body: unknown) => fetch(`${base}/api/settings`, {
+    method: 'PUT', headers: { 'X-SlothBox': '1', 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  })
+  const query = await put({ ...settings, ollamaUrl: 'http://127.0.0.1:11436/?a=1' })
+  expect(query.status).toBe(400)
+  expect((await query.json()).title).toBe('Use an http or https address, like http://127.0.0.1:11436.')
+  const negative = await put({ ...settings, laziness: { ...settings.laziness, otherSeconds: -1 } })
+  expect((await negative.json()).title).toBe('Use whole seconds from 0 up.')
+  const allow = (sha256: string) => fetch(`${base}/api/ignored/${sha256}`, { method: 'DELETE', headers: { 'X-SlothBox': '1' } })
+  const [ignored]: Schema['IgnoredFileDto'][] = await (await fetch(`${base}/api/ignored`)).json()
+  expect(await (await allow(ignored.sha256)).json()).toEqual({ success: true, message: null })
+  const gone = await allow(ignored.sha256)
+  expect(gone.status).toBe(404)
+  expect((await gone.json()).title).toBe('This file is not on the ignored list.')
 })

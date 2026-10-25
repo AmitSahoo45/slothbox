@@ -122,3 +122,18 @@ test('built-in categories and the Other tab are read-only', async () => {
   expect(screen.getByText('Installers (built in)')).toBeVisible()
   expect(screen.queryByRole('button', { name: 'Add category' })).not.toBeInTheDocument()
 })
+
+test('a category API refusal shows its ProblemDetails title and keeps the draft', async () => {
+  server.use(http.post('*/api/categories', () => HttpResponse.json(
+    { title: 'A category with this name or folder already exists.', detail: 'Synthetic technical note.', status: 409 }, { status: 409 })))
+  render(<App />)
+  const add = await screen.findByRole('button', { name: 'Add category' })
+  await waitFor(() => expect(add).toBeEnabled())
+  fireEvent.click(add)
+  const dialog = await screen.findByRole('dialog')
+  fireEvent.change(within(dialog).getByLabelText('Name'), { target: { value: 'Travel' } })
+  fireEvent.click(within(dialog).getByRole('button', { name: 'Add category' }))
+  expect(await screen.findByText('A category with this name or folder already exists.')).toBeVisible()
+  expect(screen.queryByText('Synthetic technical note.')).not.toBeInTheDocument()
+  expect(within(dialog).getByLabelText('Name')).toHaveValue('Travel')
+})

@@ -1327,11 +1327,12 @@ Three steps, in order. Moving back is allowed until "Finish setup".
   - Finishing saves the folders and `setup_completed_at` in the database, so it is refused (409) while the database is offline, Finish anyway included. It is also refused (409) when `settings.json` cannot be saved (11); a pause Finish anyway set is then lifted again. Everything is checked before anything is written: a refused output folder or folder (400, the folder named in the reason) leaves nothing behind. Folders an earlier, failed try saved are kept, not added twice. The output folder is saved last; the worker and the watchers start then. Setup finishes once: afterwards it answers 409, as the output folder is fixed (D26).
   - The checks re-run every 10 s.
 
-**Track U contract boundary:** Setup checks the absolute path and selected
-folder overlaps locally; complete output-folder validation remains with
-`POST /api/setup/complete`. Completed setup redirects to Today. The contract
-now has the dedicated output-folder check, `POST /api/setup/check-output`
-(E17), for step 1.
+**Track U contract boundary:** Step 1 shows a local hint for a path that is
+not a full folder path, then Continue asks `POST /api/setup/check-output` and
+shows its reason when refused. Step 2 checks selected folder overlaps locally.
+`POST /api/setup/complete` checks everything again; a refusal shows its
+ProblemDetails title, and a 409 re-reads setup, so a setup finished elsewhere
+redirects to Today. Completed setup redirects to Today.
 
 #### 7.4.2 Today (`/`)
 
@@ -1535,13 +1536,19 @@ One file at a time.
 
 **Track U contract boundary:** the output folder's Open action is deferred; the
 contract has file-ID open/reveal operations but no operation to open the output
-root. A missing folder's Locate sends the new path as `path` on
-`PATCH /folders/{id}` (4.5). Remove confirms that already-filed files stay in place.
+root. A missing folder's Locate opens the native dialog (a cancelled dialog
+closes Locate) or, in headless mode or when the dialog fails, a path field. It
+sends only the new path as `path` on `PATCH /folders/{id}` (4.5); the API
+applies the folder rules. A 400 keeps the dialog with its title and offers
+another pick; a 409 (the folder is still there) closes it with the title as an
+error toast and refreshes the list. Success shows "Watching {label}". Remove
+confirms that already-filed files stay in place.
 
 **Phone page block**
 - **QR code** for the phone URL.
 - **New link** confirms "The old link will stop working." Toast: "New link ready".
 - **Firewall reminder:** a one-time hint if the firewall rule is missing. The app checks for the rule by its display name, `SlothBox phone page` (Section 15 step 5), through `IFirewallRules` in App.
+- **No link:** while the page is off: "The phone page is switched off." With no private Wi-Fi address: "No Wi-Fi address found. Connect this laptop to Wi-Fi to use the phone page." with [Check again]. The contract has no operation to switch the page on, so the UI offers none.
 
 **Headless mode:** "Add folder" shows a path text field instead of the native dialog.
 
@@ -1592,8 +1599,13 @@ arrive between the check and save or removal.
 browser. Startup, Ollama address and laziness estimates use an explicit Save
 settings button. Unsaved fields survive background refreshes; untouched fields
 use the latest loaded settings when the full PUT is sent. Durations accept
-nonnegative whole seconds within the contract's int32 range. Check again uses
-the saved Ollama address; rebuild reports queued work, not completion.
+nonnegative whole seconds within the contract's int32 range. The Ollama address
+field refuses what the API refuses (not http or https, a query, fragment or
+user name) before saving, and shows the address the API saved. A refused save
+(400, 409) shows the API's title and keeps the draft. Check again uses the
+saved Ollama address; rebuild reports queued work, not completion. Allow again
+that answers 404 (the file is no longer ignored) shows the title and refreshes
+the list.
 
 Open logs folder and the app version are dropped from scope because the
 contract has no operation for opening logs and no app-version metadata. The
@@ -1695,6 +1707,7 @@ Built on Radix Primitives (Dialog, DropdownMenu, Popover, Select, Switch, Tabs, 
 **Voice**
 - Plain and calm. Sentence case, active verbs.
 - Errors never apologise: they say what happened and what to do.
+- API refusals show the ProblemDetails `title`, the sentence the API writes for the page; `detail` is shown only when there is no title.
 - A little sloth humour is allowed only in empty states and the meter sentence, never in errors.
 
 **One name per action, through the whole flow**
@@ -1851,8 +1864,10 @@ src/SlothBox.Web/
   accessing local files. The Undo since count previews the same synthetic
   actions.
 - Search and the monthly receipt ledger use those same synthetic files. Folder
-  changes, phone-link rotation and setup completion persist within the page
-  session. Tidy progress is simulated through SSE. Open `/setup?mockSetup` in
+  changes, Locate, phone-link rotation and setup completion persist within the
+  page session; the output-folder check, Locate and a second setup completion
+  answer as the API does (refusals carry the API's titles). Tidy progress is
+  simulated through SSE. Open `/setup?mockSetup` in
   `dev:mock` to start the incomplete-setup fixture; it uses path fields and never
   opens native dialogs or accesses real folders. Its QR images are placeholders.
 - Category CRUD, settings and Allow again persist for the development page

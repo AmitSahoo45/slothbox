@@ -89,16 +89,39 @@ test('a settings refetch preserves edits and includes newer untouched settings i
     laziness: { receiptSeconds: 60, screenshotSeconds: 15, documentSeconds: 15, otherSeconds: 5 } }))
 })
 
-test('failed settings saves retain the draft and reject invalid durations', async () => {
-  server.use(http.put('*/api/settings', () => HttpResponse.json({ title: 'Could not save settings. Try again.' }, { status: 503 })))
+test('failed settings saves show the API title, retain the draft and reject invalid durations', async () => {
+  const title = 'Start at login is set by the SlothBox app on Windows, which is not running.'
+  server.use(http.put('*/api/settings', () => HttpResponse.json({ title, status: 409 }, { status: 409 })))
   render(<App />)
   const receipt = await screen.findByLabelText('Seconds per receipt')
   fireEvent.change(receipt, { target: { value: '-1' } })
   expect(screen.getByRole('button', { name: 'Save settings' })).toBeDisabled()
   fireEvent.change(receipt, { target: { value: '45' } })
+  fireEvent.click(screen.getByRole('switch', { name: 'Start SlothBox when I sign in' }))
   fireEvent.click(screen.getByRole('button', { name: 'Save settings' }))
-  expect(await screen.findByText('Could not save settings. Try again.')).toBeVisible()
+  expect(await screen.findByText(title)).toBeVisible()
   expect(receipt).toHaveValue(45)
+  expect(screen.getByRole('switch', { name: 'Start SlothBox when I sign in' })).toBeChecked()
+})
+
+test.each(['http://127.0.0.1:11436/?a=1', 'http://127.0.0.1:11436/#top', 'http://user@127.0.0.1:11436', 'ftp://127.0.0.1:11436'])(
+  'an Ollama address the API refuses cannot be saved: %s', async address => {
+    render(<App />)
+    fireEvent.change(await screen.findByLabelText('Ollama address'), { target: { value: address } })
+    expect(screen.getByText('Enter a complete http or https address, without a query, fragment or user name.')).toBeVisible()
+    expect(screen.getByRole('button', { name: 'Save settings' })).toBeDisabled()
+  })
+
+test('an Ollama address behind a proxy is saved and shows the address the API returns', async () => {
+  server.use(http.put('*/api/settings', async ({ request }) => {
+    const body = await request.json() as Schema['UpdateSettingsRequest']
+    expect(body.ollamaUrl).toBe('http://127.0.0.1:8080/ollama')
+    return HttpResponse.json({ ...body, ollamaUrl: 'http://127.0.0.1:8080/ollama/' })
+  }))
+  render(<App />)
+  fireEvent.change(await screen.findByLabelText('Ollama address'), { target: { value: ' http://127.0.0.1:8080/ollama ' } })
+  fireEvent.click(screen.getByRole('button', { name: 'Save settings' }))
+  await waitFor(() => expect(screen.getByLabelText('Ollama address')).toHaveValue('http://127.0.0.1:8080/ollama/'))
 })
 
 test('checks model status and reports search rebuild as queued work', async () => {
@@ -139,4 +162,20 @@ test('Allow again preserves a refused row, then removes it on success; undo even
   allowed = false
   act(() => TestEvents.latest.emit('file.undone', { fileId: 'synthetic-file' }))
   expect(await screen.findByText('sample.jpg')).toBeVisible()
+})
+
+test('Allow again on a file that is no longer ignored shows the 404 title and refreshes the list', async () => {
+  let listed = true
+  server.use(
+    http.get('*/api/ignored', () => HttpResponse.json(listed ? responses.GetIgnored : [])),
+    http.delete('*/api/ignored/:sha256', () => {
+      listed = false
+      return HttpResponse.json({ title: 'This file is not on the ignored list.', status: 404 }, { status: 404 })
+    }),
+  )
+  render(<App />)
+  fireEvent.click(await screen.findByRole('button', { name: 'Allow again sample.jpg' }))
+  expect(await screen.findByText('This file is not on the ignored list.')).toBeVisible()
+  await waitFor(() => expect(screen.queryByText('sample.jpg')).not.toBeInTheDocument())
+  expect(screen.getByText('No ignored files.')).toBeVisible()
 })

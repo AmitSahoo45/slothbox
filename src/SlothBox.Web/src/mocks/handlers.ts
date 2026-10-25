@@ -45,6 +45,7 @@ export const handlers = [
   http.put('*/api/settings', json('UpdateSettings')),
   http.get('*/api/setup', json('GetSetup')),
   http.post('*/api/setup/complete', json('CompleteSetup')),
+  http.post('*/api/setup/check-output', json('CheckOutputFolder')),
   http.get('*/api/phone', json('GetPhone')),
   http.post('*/api/phone/rotate', json('RotatePhone')),
   http.get('*/api/ignored', json('GetIgnored')),
