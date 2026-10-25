@@ -4,6 +4,7 @@ import { http, HttpResponse } from 'msw'
 import { App } from '../src/App'
 import { server } from '../src/mocks/server'
 import { status } from '../src/mocks/fixtures'
+import type { Schema } from '../src/api/types'
 import { readFileSync } from 'node:fs'
 const shellCss = readFileSync('src/styles/base.css', 'utf8')
 
@@ -58,6 +59,100 @@ test('queue events update the waiting count without losing service status', asyn
   expect(await screen.findByText('9 files waiting')).toBeVisible()
   expect(screen.getByText('Gemma ready')).toBeVisible()
 })
+
+const driveFullCopy = 'The output drive is full. SlothBox paused itself. Free some space to continue.'
+// The status fixture has 2 queued files; the SSE case later raises the queue to 9.
+const pauseCases = [
+  { pauseReason: 'drive_full', copy: driveFullCopy, queuedCopy: driveFullCopy, role: 'alert' },
+  { pauseReason: 'gemma_offline', copy: 'Gemma is offline, 2 files waiting.', queuedCopy: 'Gemma is offline, 9 files waiting.', role: 'status' },
+] as const
+
+test.each(pauseCases)('HTTP status shows $pauseReason with its action while SSE is silent', async ({ pauseReason, copy, role }) => {
+  let current: Schema['StatusDto'] = { ...status, paused: true, pauseReason }
+  let resumeHeader: string | null = null
+  server.use(http.get('*/api/status', () => HttpResponse.json(current)),
+    http.post('*/api/resume', ({ request }) => {
+      resumeHeader = request.headers.get('X-SlothBox')
+      current = { ...status, pauseReason: null }
+      return HttpResponse.json(current)
+    }))
+  render(<App />)
+  const message = await screen.findByText(copy)
+  const banner = message.closest('[role]') as HTMLElement
+  expect(banner).toHaveAttribute('role', role)
+  expect(screen.queryByText(/SlothBox is paused/)).not.toBeInTheDocument()
+  if (pauseReason === 'drive_full') {
+    fireEvent.click(within(banner).getByRole('button', { name: 'Resume' }))
+    await waitFor(() => expect(resumeHeader).toBe('1'))
+  } else {
+    current = { ...status, pauseReason: null }
+    fireEvent.click(within(banner).getByRole('button', { name: 'Check again' }))
+  }
+  await waitFor(() => expect(screen.queryByText(copy)).not.toBeInTheDocument())
+  expect(screen.getByRole('button', { name: 'Pause' })).toBeEnabled()
+})
+
+test.each(pauseCases.flatMap(item => [null, undefined].map(clearedReason => ({ ...item, clearedReason }))))(
+  'SSE $pauseReason survives queue events, then clears on $clearedReason', async ({ pauseReason, copy, queuedCopy, clearedReason }) => {
+    render(<App />)
+    await screen.findByText('Gemma ready')
+    const source = TestEventSource.instances.at(-1)!
+    act(() => source.emit('status.changed', {
+      ...status, paused: true, pauseReason,
+      gemma: { ready: pauseReason !== 'gemma_offline', message: null },
+    }))
+    expect(await screen.findByText(copy)).toBeVisible()
+    expect(screen.queryByText(/SlothBox is paused/)).not.toBeInTheDocument()
+    expect(screen.queryByText(/Start Docker Desktop/)).not.toBeInTheDocument()
+    act(() => source.emit('queue.changed', { waiting: 9, processing: 0 }))
+    expect(await screen.findByText('9 files waiting')).toBeVisible()
+    expect(screen.getByText(queuedCopy)).toBeVisible()
+    act(() => source.emit('status.changed', { ...status, pauseReason: clearedReason }))
+    await waitFor(() => expect(screen.queryByText(queuedCopy)).not.toBeInTheDocument())
+    expect(screen.queryByText(copy)).not.toBeInTheDocument()
+    expect(screen.getByRole('button', { name: 'Pause' })).toBeEnabled()
+  },
+)
+
+test('the gemma_offline banner counts a single queued file in the singular', async () => {
+  server.use(http.get('*/api/status', () => HttpResponse.json({
+    ...status, paused: true, pauseReason: 'gemma_offline', queue: { waiting: 1, processing: 0 },
+  })))
+  render(<App />)
+  expect(await screen.findByText('Gemma is offline, 1 file waiting.')).toBeVisible()
+})
+
+test.each(['user', null, undefined] as const)('manual pause and older status payloads retain the neutral banner (%s)', async pauseReason => {
+  server.use(http.get('*/api/status', () => HttpResponse.json({ ...status, paused: true, pauseReason })))
+  render(<App />)
+  expect(await screen.findByText('SlothBox is paused. 2 files are waiting.')).toBeVisible()
+  expect(screen.queryByText(driveFullCopy)).not.toBeInTheDocument()
+  expect(screen.queryByText(/^Gemma is offline,/)).not.toBeInTheDocument()
+})
+
+test('a cleared pause reason is not restored by an older in-flight status response', async () => {
+  let release!: () => void
+  const delayed = new Promise<void>(resolve => { release = resolve })
+  let started!: () => void
+  const requested = new Promise<void>(resolve => { started = resolve })
+  server.use(http.get('*/api/status', () => HttpResponse.json({ ...status, paused: true, pauseReason: 'drive_full' })))
+  render(<App />)
+  await screen.findByText(driveFullCopy)
+  server.use(http.get('*/api/status', async () => {
+    started()
+    await delayed
+    return HttpResponse.json({ ...status, paused: true, pauseReason: 'drive_full' })
+  }))
+  const source = TestEventSource.instances.at(-1)!
+  try {
+    act(() => source.dispatchEvent(new Event('open')))
+    await requested
+    act(() => source.emit('status.changed', { ...status, pauseReason: null }))
+    await act(async () => { release(); await delayed })
+    await screen.findByRole('button', { name: 'Pause' })
+    expect(screen.queryByText(driveFullCopy)).not.toBeInTheDocument()
+  } finally { release() }
+})
 test.each([false, true])('a queue event survives an older in-flight status response (cached: %s)', async cached => {
   let release!: () => void
   const delayed = new Promise<void>(resolve => { release = resolve })
@@ -109,13 +204,14 @@ test('Pause sends the protection header, updates status and offers Resume', asyn
   fireEvent.click(screen.getAllByRole('button', { name: 'Resume' })[0])
   await screen.findByRole('button', { name: 'Pause' })
 })
-test('failed mutations show the ProblemDetails message without changing status', async () => {
+test('failed mutations show the ProblemDetails title without changing status', async () => {
   server.use(http.post('*/api/pause', () => HttpResponse.json(
-    { title: 'Cannot pause', detail: 'The database is unavailable.' }, { status: 503 })))
+    { title: 'The database is unavailable.', detail: 'Connection refused (synthetic).' }, { status: 503 })))
   render(<App />)
   await waitFor(() => expect(screen.getByRole('button', { name: 'Pause' })).toBeEnabled())
   fireEvent.click(screen.getByRole('button', { name: 'Pause' }))
   expect(await screen.findByText('The database is unavailable.')).toBeVisible()
+  expect(screen.queryByText('Connection refused (synthetic).')).not.toBeInTheDocument()
   expect(screen.getByRole('button', { name: 'Pause' })).toBeEnabled()
 })
 test('unavailable status is honest, retryable and does not say services are ready', async () => {

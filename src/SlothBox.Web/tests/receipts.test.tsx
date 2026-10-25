@@ -39,3 +39,19 @@ test('clicking an amount opens the receipt drawer', async () => {
   fireEvent.click(await screen.findByRole('cell', { name: '₹120.00' }))
   expect(await screen.findByRole('dialog', { name: 'File details' })).toBeVisible()
 })
+
+test('receipt API refusals show their ProblemDetails title for the ledger and the CSV export', async () => {
+  let refuse = true
+  const problem = () => HttpResponse.json({ title: 'Choose a month like 2026-10.', detail: 'Synthetic technical note.', status: 400 }, { status: 400 })
+  server.use(
+    http.get('*/api/receipts', () => refuse ? problem() : HttpResponse.json(responses.GetReceipts)),
+    http.get('*/api/receipts/export.csv', problem),
+  )
+  render(<App />)
+  expect(await screen.findByText('Choose a month like 2026-10.')).toBeVisible()
+  expect(screen.queryByText('Synthetic technical note.')).not.toBeInTheDocument()
+  refuse = false
+  fireEvent.click(screen.getByRole('button', { name: 'Retry receipts' }))
+  fireEvent.click(await screen.findByRole('link', { name: 'Export CSV' }))
+  expect(await screen.findByRole('alert')).toHaveTextContent('Choose a month like 2026-10.')
+})

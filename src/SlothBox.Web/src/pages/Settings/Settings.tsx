@@ -41,7 +41,11 @@ function SettingsForm({ settings, unavailable }: { settings: Schema['SettingsDto
   const durationValues = Object.fromEntries(Object.keys(durations).map(key => [key, seconds[key as SecondsKey] ?? String(settings.laziness[key as SecondsKey])])) as Record<SecondsKey, string>
   const validDurations = Object.values(durationValues).every(value => value.trim() !== '' && Number.isInteger(Number(value)) && Number(value) >= 0 && Number(value) <= 2147483647)
   let validAddress = false
-  try { validAddress = ['http:', 'https:'].includes(new URL(values.ollamaUrl).protocol) } catch { /* Show validation below. */ }
+  // The API refuses a query, fragment or user name: the calls append their own paths (spec 7.4.8).
+  try {
+    const address = new URL(values.ollamaUrl)
+    validAddress = ['http:', 'https:'].includes(address.protocol) && !address.username && !address.password && !/[?#]/.test(values.ollamaUrl)
+  } catch { /* Show validation below. */ }
   const dirty = Object.keys(draft).length > 0 || Object.keys(seconds).length > 0
   const client = useQueryClient()
   const { notify } = useToasts()
@@ -64,7 +68,7 @@ function SettingsForm({ settings, unavailable }: { settings: Schema['SettingsDto
       </section>
       <section className="settings-section" aria-labelledby="ai-heading"><h2 id="ai-heading">AI</h2>
         <label className="field">Ollama address<input type="url" required value={values.ollamaUrl} onChange={event => setDraft({ ...draft, ollamaUrl: event.target.value })} aria-invalid={!validAddress || undefined} aria-describedby={!validAddress ? 'address-error' : undefined} /></label>
-        {!validAddress && <p id="address-error" className="field-error">Enter a complete http or https address.</p>}
+        {!validAddress && <p id="address-error" className="field-error">Enter a complete http or https address, without a query, fragment or user name.</p>}
         <ModelStatus addressChanged={draft.ollamaUrl !== undefined && draft.ollamaUrl !== settings.ollamaUrl} />
       </section>
       <section className="settings-section" aria-labelledby="laziness-heading"><h2 id="laziness-heading">Laziness meter</h2>
@@ -104,7 +108,8 @@ function IgnoredFiles() {
   const { notify } = useToasts()
   const allow = useMutation({ mutationFn: async (sha256: string) => requireSuccess(await request('delete', '/api/ignored/{sha256}', { path: { sha256 } })),
     onSuccess: async () => { await client.invalidateQueries({ queryKey: ['ignored'] }); notify({ message: 'File allowed again' }) },
-    onError: error => notify({ message: error.message, tone: 'error' }),
+    // A 404 means the file is no longer ignored; the refreshed list drops its row.
+    onError: error => { notify({ message: error.message, tone: 'error' }); void client.invalidateQueries({ queryKey: ['ignored'] }) },
   })
   return <section className="settings-section" aria-labelledby="ignored-heading"><h2 id="ignored-heading">Ignored files</h2>
     <p className="field-hint">Undone files SlothBox will not refile unless you allow them again.</p>

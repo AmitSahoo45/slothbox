@@ -13,9 +13,9 @@ test('browser mocks retain Pause and Resume across status reads and enforce the 
   server.use(...createBrowserHandlers())
   expect((await fetch(`${base}/api/pause`, { method: 'POST' })).status).toBe(403)
   await fetch(`${base}/api/pause`, { method: 'POST', headers: { 'X-SlothBox': '1' } })
-  expect(await (await fetch(`${base}/api/status`)).json()).toMatchObject({ paused: true })
+  expect(await (await fetch(`${base}/api/status`)).json()).toMatchObject({ paused: true, pauseReason: 'user' })
   await fetch(`${base}/api/resume`, { method: 'POST', headers: { 'X-SlothBox': '1' } })
-  expect(await (await fetch(`${base}/api/status`)).json()).toMatchObject({ paused: false })
+  expect(await (await fetch(`${base}/api/status`)).json()).toMatchObject({ paused: false, pauseReason: null })
 })
 test('browser SSE stays open and sends a new status when Pause is clicked', async () => {
   server.use(...createBrowserHandlers())
@@ -26,10 +26,16 @@ test('browser SSE stays open and sends a new status when Pause is clicked', asyn
     const first = await reader.read()
     expect(first.done).toBe(false)
     expect(new TextDecoder().decode(first.value)).toContain('"paused":false')
+    expect(new TextDecoder().decode(first.value)).toContain('"pauseReason":null')
     await fetch(`${base}/api/pause`, { method: 'POST', headers: { 'X-SlothBox': '1' } })
     const next = await reader.read()
     expect(next.done).toBe(false)
     expect(new TextDecoder().decode(next.value)).toContain('"paused":true')
+    expect(new TextDecoder().decode(next.value)).toContain('"pauseReason":"user"')
+    await fetch(`${base}/api/resume`, { method: 'POST', headers: { 'X-SlothBox': '1' } })
+    const resumed = new TextDecoder().decode((await reader.read()).value)
+    expect(resumed).toContain('"paused":false')
+    expect(resumed).toContain('"pauseReason":null')
   } finally {
     controller.abort()
     await reader.cancel().catch(() => undefined)
@@ -57,6 +63,20 @@ test('browser review supports category selection, skip, refile and undo with per
   expect((await get(`files/${id}`)).file.title).toBe('Synthetic corrected receipt')
   expect((await post(`files/${id}/undo`)).success).toBe(true)
   expect((await get('review')).some((item: Schema['ReviewItemDto']) => item.file.file.fileId === id)).toBe(true)
+})
+
+test('browser Undo since preview counts the session actions the undo then reverses', async () => {
+  server.use(...createBrowserHandlers())
+  // Synthetic files are filed an hour apart, newest now: four fall within the last three hours.
+  const since = new Date(Date.now() - 3 * 3600000 - 60000).toISOString()
+  const preview = async () => (await fetch(`${base}/api/undo/since?since=${encodeURIComponent(since)}`)).json()
+  expect(await preview()).toEqual({ actions: 4 })
+  const result = await (await fetch(`${base}/api/undo/since`, {
+    method: 'POST', headers: { 'X-SlothBox': '1', 'Content-Type': 'application/json' }, body: JSON.stringify({ since }),
+  })).json()
+  expect(result.undone).toBe(4)
+  expect(await preview()).toEqual({ actions: 0 })
+  expect((await fetch(`${base}/api/undo/since`)).status).toBe(400)
 })
 
 test('browser activity uses limit/cursor and mutations reject missing protection headers', async () => {
@@ -99,7 +119,7 @@ test('browser search and receipt month filters use the same files as the drawer'
 })
 
 test('browser folder and setup mutations persist and rotation changes the QR with the URL', async () => {
-  server.use(...createBrowserHandlers())
+  server.use(...createBrowserHandlers({ setupComplete: false }))
   const post = async (path: string, body?: unknown) => (await fetch(`${base}/api/${path}`, {
     method: 'POST', headers: { 'X-SlothBox': '1', 'Content-Type': 'application/json' },
     body: body === undefined ? undefined : JSON.stringify(body),
@@ -112,5 +132,67 @@ test('browser folder and setup mutations persist and rotation changes the QR wit
   expect(rotated.url).not.toBe(phone.url)
   expect(rotated.qrSvg).not.toBe(phone.qrSvg)
   await post('setup/complete', { outputRoot: 'D:\\Synthetic-Filed', folders: [], finishAnyway: true })
-  expect(await (await fetch(`${base}/api/status`)).json()).toMatchObject({ paused: true, setupComplete: true })
+  expect(await (await fetch(`${base}/api/status`)).json()).toMatchObject({ paused: true, pauseReason: 'user', setupComplete: true })
+})
+
+test.each([
+  { pauseReason: 'drive_full', gemmaReady: true },
+  { pauseReason: 'gemma_offline', gemmaReady: false },
+] as const)('browser scenario starts paused for $pauseReason and Resume clears it', async ({ pauseReason, gemmaReady }) => {
+  server.use(...createBrowserHandlers({ pauseReason }))
+  expect(await (await fetch(`${base}/api/status`)).json()).toMatchObject({ paused: true, pauseReason, gemma: { ready: gemmaReady } })
+  const resumed = await fetch(`${base}/api/resume`, { method: 'POST', headers: { 'X-SlothBox': '1' } })
+  const cleared = { paused: false, pauseReason: null, gemma: { ready: true } }
+  expect(await resumed.json()).toMatchObject(cleared)
+  expect(await (await fetch(`${base}/api/status`)).json()).toMatchObject(cleared)
+})
+
+test('browser setup checks the output folder and refuses a second completion', async () => {
+  server.use(...createBrowserHandlers({ setupComplete: false }))
+  const post = (path: string, body: unknown) => fetch(`${base}/api/${path}`, {
+    method: 'POST', headers: { 'X-SlothBox': '1', 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  })
+  expect((await fetch(`${base}/api/setup/check-output`, { method: 'POST', body: '{"path":"D:\\\\Filed"}' })).status).toBe(403)
+  expect(await (await post('setup/check-output', { path: 'D:\\' })).json()).toMatchObject({ accepted: false, reason: expect.any(String) })
+  expect(await (await post('setup/check-output', { path: 'D:\\Synthetic-Filed' })).json()).toEqual({ accepted: true, reason: null })
+  expect((await post('setup/complete', { outputRoot: 'D:\\Synthetic-Filed', folders: [], finishAnyway: false })).status).toBe(200)
+  const again = await post('setup/complete', { outputRoot: 'D:\\Synthetic-Filed', folders: [], finishAnyway: false })
+  expect(again.status).toBe(409)
+  expect((await again.json()).title).toContain('Setup is already finished.')
+})
+
+test('browser Locate moves only a missing folder and applies the folder rules to the new path', async () => {
+  server.use(...createBrowserHandlers())
+  const patch = (id: number | string, body: unknown) => fetch(`${base}/api/folders/${id}`, {
+    method: 'PATCH', headers: { 'X-SlothBox': '1', 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  })
+  const folders: Schema['FolderDto'][] = await (await fetch(`${base}/api/folders`)).json()
+  const present = folders.find(folder => !folder.missing)!
+  const missing = folders.find(folder => folder.missing)!
+  expect((await patch(present.id, { path: 'D:\\Synthetic-Elsewhere' })).status).toBe(409)
+  const refused = await patch(missing.id, { path: 'D:\\' })
+  expect(refused.status).toBe(400)
+  expect((await refused.json()).title).toBeTruthy()
+  const located = await (await patch(missing.id, { path: 'D:\\Synthetic-Cloud-Moved' })).json()
+  expect(located).toMatchObject({ path: 'D:\\Synthetic-Cloud-Moved', missing: false, isCloud: true, mode: 'copy' })
+  expect((await (await fetch(`${base}/api/folders`)).json()).find((folder: Schema['FolderDto']) => folder.id === missing.id)).toMatchObject({ missing: false })
+})
+
+test('browser settings and Allow again answer with the API titles', async () => {
+  server.use(...createBrowserHandlers())
+  const settings: Schema['SettingsDto'] = await (await fetch(`${base}/api/settings`)).json()
+  const put = (body: unknown) => fetch(`${base}/api/settings`, {
+    method: 'PUT', headers: { 'X-SlothBox': '1', 'Content-Type': 'application/json' }, body: JSON.stringify(body),
+  })
+  const query = await put({ ...settings, ollamaUrl: 'http://127.0.0.1:11436/?a=1' })
+  expect(query.status).toBe(400)
+  expect((await query.json()).title).toBe('Use an http or https address, like http://127.0.0.1:11436.')
+  const negative = await put({ ...settings, laziness: { ...settings.laziness, otherSeconds: -1 } })
+  expect((await negative.json()).title).toBe('Use whole seconds from 0 up.')
+  const allow = (sha256: string) => fetch(`${base}/api/ignored/${sha256}`, { method: 'DELETE', headers: { 'X-SlothBox': '1' } })
+  const [ignored]: Schema['IgnoredFileDto'][] = await (await fetch(`${base}/api/ignored`)).json()
+  expect(await (await allow(ignored.sha256)).json()).toEqual({ success: true, message: null })
+  const gone = await allow(ignored.sha256)
+  expect(gone.status).toBe(404)
+  expect((await gone.json()).title).toBe('This file is not on the ignored list.')
 })

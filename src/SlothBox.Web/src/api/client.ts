@@ -61,8 +61,9 @@ async function ensureOk(response: Response) {
   if (!response.ok) {
     let message = `Request failed (${response.status}). Try again.`
     try {
+      // The API puts the sentence the page shows in the title; detail is only a technical note.
       const problem: Schema['ProblemDetails'] = await response.json()
-      message = problem.detail || problem.title || message
+      message = problem.title || problem.detail || message
     } catch { /* Keep the fallback for non-JSON responses. */ }
     throw new ApiError(response.status, message)
   }

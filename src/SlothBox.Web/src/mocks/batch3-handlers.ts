@@ -20,6 +20,7 @@ export function createBatch3Handlers(getStatus: () => Schema['StatusDto'], setSt
     const copyOnly = /cloud/i.test(path)
     return { accepted: absolute, reason: !absolute ? 'A drive root or relative path cannot be watched.' : copyOnly ? 'Copy only (cloud folder)' : null, copyOnly, existingFileCount: 12 }
   }
+  const outputRefused = 'Use a full folder path below a drive root, like D:\\SlothBox.'
   const tidy = (folder: Schema['FolderDto']) => {
     const total = Number(folder.baselineCount)
     let done = 0
@@ -34,12 +35,19 @@ export function createBatch3Handlers(getStatus: () => Schema['StatusDto'], setSt
     http.get('*/api/setup', () => HttpResponse.json(setup())),
     http.post('*/api/setup/complete', async ({ request }) => {
       const error = denied(request); if (error) return error
+      if (getStatus().setupComplete) return HttpResponse.json({ title: "Setup is already finished. The output folder can't be changed in this version." }, { status: 409 })
       const body = await request.json() as Schema['CompleteSetupRequest']
-      if (!check(body.outputRoot).accepted) return HttpResponse.json({ title: 'Choose an absolute output folder below a drive root.' }, { status: 400 })
+      if (!check(body.outputRoot).accepted) return HttpResponse.json({ title: outputRefused }, { status: 400 })
       outputRoot = body.outputRoot
       folders = body.folders.map(folder => ({ ...responses.GetFolders[0], ...folder, id: nextId++, enabled: true, isCloud: /cloud/i.test(folder.path), filedCount: 0, baselineCount: 12 }))
-      setStatus({ ...getStatus(), setupComplete: true, paused: body.finishAnyway })
+      setStatus({ ...getStatus(), setupComplete: true, paused: body.finishAnyway, pauseReason: body.finishAnyway ? 'user' : null })
       return HttpResponse.json(setup())
+    }),
+    http.post('*/api/setup/check-output', async ({ request }) => {
+      const error = denied(request); if (error) return error
+      const body = await request.json() as Schema['CheckFolderRequest']
+      const accepted = check(body.path.trim()).accepted
+      return HttpResponse.json({ accepted, reason: accepted ? null : outputRefused } satisfies Schema['OutputFolderCheckDto'])
     }),
     http.get('*/api/folders', () => HttpResponse.json(folders)),
     http.post('*/api/folders/check', async ({ request }) => {
@@ -65,6 +73,15 @@ export function createBatch3Handlers(getStatus: () => Schema['StatusDto'], setSt
       const folder = folders.find(item => String(item.id) === params.id)
       if (!folder) return missing()
       const body = await request.json() as Schema['UpdateFolderRequest']
+      // Locate: only a missing folder moves, and the new path follows the same synthetic rules as Add folder.
+      if (body.path != null) {
+        if (!folder.missing) return HttpResponse.json({ title: 'The folder is still where it was. Locate only points a missing folder at its new place.' }, { status: 409 })
+        const path = body.path.trim()
+        const checked = check(path)
+        if (!checked.accepted) return HttpResponse.json({ title: checked.reason }, { status: 400 })
+        if (folders.some(other => other !== folder && other.path.toLowerCase() === path.toLowerCase())) return HttpResponse.json({ title: 'This folder is already watched.' }, { status: 400 })
+        Object.assign(folder, { path, missing: false, isCloud: checked.copyOnly, mode: checked.copyOnly ? 'copy' : folder.mode, baselineCount: checked.existingFileCount })
+      }
       if (body.label != null) folder.label = body.label
       if (body.enabled != null) folder.enabled = body.enabled
       if (body.mode != null) folder.mode = folder.isCloud ? 'copy' : body.mode

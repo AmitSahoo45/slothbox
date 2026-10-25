@@ -8,6 +8,10 @@ export function requireSuccess<T extends { success: boolean; reason?: string | n
   if (!result.success) throw new Error(result.reason || result.message || 'The action could not be completed. Try again.')
   return result
 }
+// The API reads an omitted payment method as UPI, so every refiled receipt states one.
+function withPaymentMethod(body: Schema['RefileRequest']): Schema['RefileRequest'] {
+  return body.receipt ? { ...body, receipt: { ...body.receipt, paymentMethod: body.receipt.paymentMethod ?? 'unknown' } } : body
+}
 export function useFileActions() {
   const client = useQueryClient()
   const { notify } = useToasts()
@@ -23,7 +27,7 @@ export function useFileActions() {
   })
   const refile = useMutation({
     mutationFn: ({ id, body }: { id: string; body: Schema['RefileRequest'] }) =>
-      request('post', '/api/files/{id}/refile', { path: { id }, body }),
+      request('post', '/api/files/{id}/refile', { path: { id }, body: withPaymentMethod(body) }),
     onSuccess: async data => {
       await client.cancelQueries({ queryKey: ['files', data.file.fileId] })
       client.setQueryData(['files', data.file.fileId], data)

@@ -4,6 +4,7 @@ import { http, HttpResponse } from 'msw'
 import { App } from '../src/App'
 import { responses, fileId, activity } from '../src/mocks/fixtures'
 import { server } from '../src/mocks/server'
+import type { Schema } from '../src/api/types'
 import { setupUi } from './ui-helpers'
 
 setupUi()
@@ -62,7 +63,7 @@ test('Change refiles the selected type/category and exposes Undo', async () => {
   fireEvent.change(await within(drawer).findByLabelText('Category'), { target: { value: '2' } })
   fireEvent.click(within(drawer).getByRole('button', { name: 'Save changes' }))
   expect(await screen.findByText('Filed to Receipts / Shopping')).toBeInTheDocument()
-  expect(body).toMatchObject({ type: 'receipt', categoryId: 2 })
+  expect(body).toMatchObject({ type: 'receipt', categoryId: 2, receipt: { paymentMethod: 'cash' } })
   expect(within(drawer).getByText('Receipt / Shopping')).toBeVisible()
   const notifications = within(drawer).getByRole('region', { name: 'Notifications (F8)' })
   fireEvent.click(within(notifications).getByRole('button', { name: 'Undo' }))
@@ -70,6 +71,44 @@ test('Change refiles the selected type/category and exposes Undo', async () => {
   await within(notifications).findByText('Undone')
   fireEvent.keyDown(drawer, { key: 'Escape' })
   await waitFor(() => expect(screen.queryByRole('dialog', { name: 'File details' })).not.toBeInTheDocument())
+})
+
+test('Change sends an unreported payment method as unknown, so the API never reads it as UPI', async () => {
+  let body: Schema['RefileRequest'] | undefined
+  const receipt: Partial<Schema['ReceiptDto']> = { ...responses.GetFile.receipt }
+  delete receipt.paymentMethod
+  server.use(
+    http.get('*/api/files/:id', () => HttpResponse.json({ ...responses.GetFile, receipt })),
+    http.post('*/api/files/:id/refile', async ({ request }) => {
+      body = await request.json() as Schema['RefileRequest']
+      return HttpResponse.json(responses.Refile)
+    }),
+  )
+  window.history.replaceState({}, '', `/?file=${fileId}`)
+  render(<App />)
+  const drawer = await screen.findByRole('dialog', { name: 'File details' })
+  fireEvent.click(await within(drawer).findByRole('button', { name: 'Change' }))
+  const save = within(drawer).getByRole('button', { name: 'Save changes' })
+  await waitFor(() => expect(save).toBeEnabled())
+  fireEvent.click(save)
+  await waitFor(() => expect(body?.receipt).toEqual({ ...receipt, paymentMethod: 'unknown' }))
+})
+
+test('a refused Change shows the API message and keeps the form, with no Undo offered', async () => {
+  server.use(http.post('*/api/files/:id/refile', () =>
+    HttpResponse.json({ title: 'Nothing to change.', status: 400 }, { status: 400 })))
+  window.history.replaceState({}, '', `/?file=${fileId}`)
+  render(<App />)
+  const drawer = await screen.findByRole('dialog', { name: 'File details' })
+  fireEvent.click(await within(drawer).findByRole('button', { name: 'Change' }))
+  const save = within(drawer).getByRole('button', { name: 'Save changes' })
+  await waitFor(() => expect(save).toBeEnabled())
+  fireEvent.click(save)
+  expect(await within(drawer).findByText('Nothing to change.')).toBeVisible()
+  expect(save).toBeEnabled()
+  expect(screen.queryByText(/^Filed to/)).not.toBeInTheDocument()
+  const notifications = within(drawer).getByRole('region', { name: 'Notifications (F8)' })
+  expect(within(notifications).queryByRole('button', { name: 'Undo' })).not.toBeInTheDocument()
 })
 
 test('missing file gives retryable error; no fake details or mutation controls', async () => {

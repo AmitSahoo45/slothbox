@@ -1330,11 +1330,12 @@ Three steps, in order. Moving back is allowed until "Finish setup".
   - Finishing saves the folders and `setup_completed_at` in the database, so it is refused (409) while the database is offline, Finish anyway included. It is also refused (409) when `settings.json` cannot be saved (11); a pause Finish anyway set is then lifted again. Everything is checked before anything is written: a refused output folder or folder (400, the folder named in the reason) leaves nothing behind. Folders an earlier, failed try saved are kept, not added twice. The output folder is saved last; the worker and the watchers start then. Setup finishes once: afterwards it answers 409, as the output folder is fixed (D26).
   - The checks re-run every 10 s.
 
-**Track U contract boundary:** Setup checks the absolute path and selected
-folder overlaps locally; complete output-folder validation remains with
-`POST /api/setup/complete`. Completed setup redirects to Today. The contract
-now has the dedicated output-folder check, `POST /api/setup/check-output`
-(E17), for step 1.
+**Track U contract boundary:** Step 1 shows a local hint for a path that is
+not a full folder path, then Continue asks `POST /api/setup/check-output` and
+shows its reason when refused. Step 2 checks selected folder overlaps locally.
+`POST /api/setup/complete` checks everything again; a refusal shows its
+ProblemDetails title, and a 409 re-reads setup, so a setup finished elsewhere
+redirects to Today. Completed setup redirects to Today.
 
 #### 7.4.2 Today (`/`)
 
@@ -1409,6 +1410,11 @@ It is a preview: a file changed after filing is refused when the undo runs,
 so the toast reports the count actually undone, and any failed results are
 shown separately with their reasons. It never counts visible activity rows
 as actions.
+
+With 0 the dialog reads "Nothing to undo since 10:30." and offers only
+[Close]. While the count loads, or after it fails (shown with [Retry count]),
+[Undo actions] stays disabled, so nothing is undone without a count. Each
+opening of the dialog counts afresh.
 
 **Empty state:** "Nothing filed yet. Save a file to a watched folder, take a screenshot, or send one from your phone." with [Show phone QR code].
 
@@ -1533,13 +1539,19 @@ One file at a time.
 
 **Track U contract boundary:** the output folder's Open action is deferred; the
 contract has file-ID open/reveal operations but no operation to open the output
-root. A missing folder's Locate sends the new path as `path` on
-`PATCH /folders/{id}` (4.5). Remove confirms that already-filed files stay in place.
+root. A missing folder's Locate opens the native dialog (a cancelled dialog
+closes Locate) or, in headless mode or when the dialog fails, a path field. It
+sends only the new path as `path` on `PATCH /folders/{id}` (4.5); the API
+applies the folder rules. A 400 keeps the dialog with its title and offers
+another pick; a 409 (the folder is still there) closes it with the title as an
+error toast and refreshes the list. Success shows "Watching {label}". Remove
+confirms that already-filed files stay in place.
 
 **Phone page block**
 - **QR code** for the phone URL.
 - **New link** confirms "The old link will stop working." Toast: "New link ready".
 - **Firewall reminder:** a one-time hint if the firewall rule is missing. The app checks for the rule by its display name, `SlothBox phone page` (Section 15 step 5), through `IFirewallRules` in App.
+- **No link:** while the page is off: "The phone page is switched off." With no private Wi-Fi address: "No Wi-Fi address found. Connect this laptop to Wi-Fi to use the phone page." with [Check again]. The contract has no operation to switch the page on, so the UI offers none.
 
 **Headless mode:** "Add folder" shows a path text field instead of the native dialog.
 
@@ -1584,19 +1596,23 @@ arrive between the check and save or removal.
 | AI | Ollama address (http or https; a query, fragment or user name is refused, and a path behind a proxy is kept with a trailing slash; used from the next call, no restart), both models with status, [Check again]; [Rebuild missing search data] |
 | Laziness meter | Seconds per receipt, screenshot, document, other |
 | Ignored files | Undone files SlothBox will not refile: name, when undone, [Allow again] |
-| Logs | [Open logs folder] |
-| About | Version, repo link |
+| About | Repo link |
 
 **Track U integration:** theme changes apply immediately and stay in the
 browser. Startup, Ollama address and laziness estimates use an explicit Save
 settings button. Unsaved fields survive background refreshes; untouched fields
 use the latest loaded settings when the full PUT is sent. Durations accept
-nonnegative whole seconds within the contract's int32 range. Check again uses
-the saved Ollama address; rebuild reports queued work, not completion.
+nonnegative whole seconds within the contract's int32 range. The Ollama address
+field refuses what the API refuses (not http or https, a query, fragment or
+user name) before saving, and shows the address the API saved. A refused save
+(400, 409) shows the API's title and keeps the draft. Check again uses the
+saved Ollama address; rebuild reports queued work, not completion. Allow again
+that answers 404 (the file is no longer ignored) shows the title and refreshes
+the list.
 
-Open logs folder and the app version remain deferred: the fixed contract has
-no operation for opening logs and no app-version metadata. The About repository
-link uses the project named in this spec. No placeholder version is displayed.
+Open logs folder and the app version are dropped from scope because the
+contract has no operation for opening logs and no app-version metadata. The
+About repository link uses the project named in this spec.
 
 #### 7.4.9 File drawer (`?file=<id>`)
 
@@ -1631,6 +1647,11 @@ Opens from the right, 440 px wide, over any page.
 - **Change** opens type and category pickers. It refiles the file, which can be undone.
 - **Focus** is trapped while the drawer is open. `Esc` closes it and returns focus to the row that opened it.
 
+**Track U integration:** File it and Change always send the receipt's payment
+method, as `unknown` when none is known, because the API reads an omitted
+method as UPI. A refused refile, such as "Nothing to change.", shows the API's
+message as an error toast and keeps the form, with no Undo.
+
 #### 7.4.10 Banners and toasts
 
 **Banners** sit at the top of the content area on every page.
@@ -1638,6 +1659,7 @@ Opens from the right, 440 px wide, over any page.
 | Condition | Tone | Copy | Action |
 |---|---|---|---|
 | Gemma offline | `sun` | "Gemma is offline. 4 files are waiting. Start Docker Desktop and SlothBox will carry on by itself." | [Check again] |
+| Paused for `gemma_offline` | `sun` | "Gemma is offline, 4 files waiting." | [Check again] |
 | Model missing | `sun` | "EmbeddingGemma isn't installed." + command in mono | [Copy command] |
 | Database offline | `ember` | "The database is offline. Nothing will move until it's back." | [Check again] |
 | Paused | neutral | "SlothBox is paused. 6 files are waiting." | [Resume] |
@@ -1649,10 +1671,19 @@ Opens from the right, 440 px wide, over any page.
 - **Error toasts** stay until dismissed.
 - **Any toast after a move** includes [Undo].
 
-**Track U integration note:** `StatusDto.pauseReason` is the explicit signal
-for these banners: `drive_full` for Drive full, `gemma_offline` for Gemma
-offline or a missing model, `user` for Paused. The UI does not infer them from
-a free-text service message.
+**Pause reasons:** `StatusDto` and `status.changed` carry an optional nullable
+`pauseReason`. `drive_full` shows the Drive full banner; `gemma_offline` shows
+the Paused for `gemma_offline` banner, worded as in Section 9 with the queued
+count from `queue.waiting`. Both replace the neutral paused banner, and the
+`gemma_offline` banner also replaces the Gemma offline banner to avoid
+duplicates. `user` shows the neutral banner while paused. With null or an
+omitted reason, the reason-specific banner clears and the existing paused and
+service checks apply. Database and missing-model warnings remain independent.
+Reasons are never inferred from free-text service messages.
+
+Status reads and Check again work without SSE messages. The live `/events`
+stream remains silent until E11; these states are verified against the contract
+with MSW fixtures in the meantime.
 
 ### 7.5 Components
 
@@ -1679,6 +1710,7 @@ Built on Radix Primitives (Dialog, DropdownMenu, Popover, Select, Switch, Tabs, 
 **Voice**
 - Plain and calm. Sentence case, active verbs.
 - Errors never apologise: they say what happened and what to do.
+- API refusals show the ProblemDetails `title`, the sentence the API writes for the page; `detail` is shown only when there is no title.
 - A little sloth humour is allowed only in empty states and the meter sentence, never in errors.
 
 **One name per action, through the whole flow**
@@ -1838,16 +1870,23 @@ src/SlothBox.Web/
 - The development fixtures include paginated activity and a review queue.
   Skip, refile and Undo retain their synthetic state for the page session and
   publish SSE updates. Open and Show in folder acknowledge the request without
-  accessing local files.
+  accessing local files. The Undo since count previews the same synthetic
+  actions.
 - Search and the monthly receipt ledger use those same synthetic files. Folder
-  changes, phone-link rotation and setup completion persist within the page
-  session. Tidy progress is simulated through SSE. Open `/setup?mockSetup` in
+  changes, Locate, phone-link rotation and setup completion persist within the
+  page session; the output-folder check, Locate and a second setup completion
+  answer as the API does (refusals carry the API's titles). Tidy progress is
+  simulated through SSE. Open `/setup?mockSetup` in
   `dev:mock` to start the incomplete-setup fixture; it uses path fields and never
   opens native dialogs or accesses real folders. Its QR images are placeholders.
 - Category CRUD, settings and Allow again persist for the development page
   session. Category names and counts share the file fixtures; saved estimates
   update the meter, and undo adds a synthetic ignored entry. Reload resets these
   fixtures; the theme preference persists in browser storage.
+- In `dev:mock`, `?mockPause=drive_full` and `?mockPause=gemma_offline` start
+  with the corresponding pause banner; the `gemma_offline` scenario also reports
+  Gemma offline. Pause sets the reason to `user`; Resume clears it to null and
+  ends the synthetic outage. These scenarios use synthetic state only.
 - Known development limitation with pinned MSW 3.0.3: repeated full-page reloads
   can report a ServiceWorker update "Not found" rejection while the previous
   page unregisters its worker. The tested page flows still work; this warning

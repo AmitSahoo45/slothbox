@@ -32,7 +32,12 @@ function SetupSteps({ initial }: { initial: Schema['SetupDto'] }) {
   useEffect(() => { title.current?.focus(); if (step === 3) void refetchChecks() }, [step, refetchChecks])
   const status = checks.data?.status ?? initial.status
   const allReady = status.gemma.ready && status.visionModel.present && status.embeddingModel.present && status.database.ready
-  const pick = useMutation({ mutationFn: () => request('post', '/api/system/pick-folder'), onSuccess: result => { if (result.path) setOutput(result.path) } })
+  // Step 1 asks the API's output-folder rules (7.4.1) before anything is saved; finishing checks them all again.
+  const checkOutput = useMutation({ mutationFn: async (path: string) => {
+    const result = await request('post', '/api/setup/check-output', { body: { path } })
+    if (!result.accepted) throw new Error(result.reason || 'SlothBox cannot put sorted files in this folder.')
+  }, onSuccess: () => setStep(2) })
+  const pick = useMutation({ mutationFn: () => request('post', '/api/system/pick-folder'), onSuccess: result => { if (result.path) { setOutput(result.path); checkOutput.reset() } } })
   const next = useMutation({ mutationFn: async () => {
     const selected = []
     const seen = new Set<string>()
@@ -55,6 +60,9 @@ function SetupSteps({ initial }: { initial: Schema['SetupDto'] }) {
       folders: folders.filter(folder => folder.selected).map(({ path, label, mode }) => ({ path, label, mode })), finishAnyway } })
     if (!result.complete) throw new Error('Setup was not completed. Check the settings and try again.')
     return result
+  }, onError: () => {
+    // A 409 can mean setup was finished elsewhere; a fresh setup read then leaves this page.
+    void client.invalidateQueries({ queryKey: ['setup'] })
   }, onSuccess: async result => {
     await client.cancelQueries({ queryKey: ['status'] })
     client.setQueryData(['status'], result.status)
@@ -71,12 +79,13 @@ function SetupSteps({ initial }: { initial: Schema['SetupDto'] }) {
     <p className="step-count">Step {step} of 3</p>
     <h2 ref={title} tabIndex={-1}>{step === 1 ? 'Where should SlothBox put sorted files?' : step === 2 ? 'Which folders should SlothBox watch?' : 'Checking that SlothBox can think'}</h2>
     {step === 1 && <>
-      <div className="output-picker"><label className="field">Output folder<input value={outputRoot} onChange={event => setOutput(event.target.value)} /></label>
-        {initial.nativePickerAvailable && <Button busy={pick.isPending} onClick={() => pick.mutate()}>Browse…</Button>}</div>
+      <div className="output-picker"><label className="field">Output folder<input value={outputRoot} disabled={checkOutput.isPending} onChange={event => { setOutput(event.target.value); checkOutput.reset() }} /></label>
+        {initial.nativePickerAvailable && <Button busy={pick.isPending} disabled={checkOutput.isPending} onClick={() => pick.mutate()}>Browse…</Button>}</div>
       <p>This can't be changed later in this version.</p>
       {!outputValid && <p className="field-hint">Choose an absolute folder on a drive, such as D:\SlothBox.</p>}
       {pick.error && <p role="alert">{pick.error.message}</p>}
-      <div className="form-actions"><Button variant="primary" disabled={!outputValid} onClick={() => setStep(2)}>Continue</Button></div>
+      {checkOutput.error && <p role="alert" className="query-error">{checkOutput.error.message}</p>}
+      <div className="form-actions"><Button variant="primary" busy={checkOutput.isPending} disabled={!outputValid || pick.isPending} onClick={() => checkOutput.mutate(outputRoot.trim())}>Continue</Button></div>
     </>}
     {step === 2 && <>
       <div className="setup-folders">{folders.map((folder, index) => <label key={`${folder.path}-${index}`} className="setup-folder">

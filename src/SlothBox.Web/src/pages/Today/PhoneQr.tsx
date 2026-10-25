@@ -5,6 +5,7 @@ import { request } from '../../api/client'
 import { Button } from '../../components/Button'
 import { QueryError } from '../../components/QueryError'
 import { ToastHost } from '../../components/ToastHost'
+import { phoneUnavailable } from '../../components/format'
 
 export function PhoneQr() {
   const [open, setOpen] = useState(false)
@@ -20,7 +21,7 @@ export function PhoneQr() {
       {phone.data && (phone.data.enabled && phone.data.qrSvg && phone.data.url
         ? <><img className="phone-qr" alt="Phone upload QR code" src={`data:image/svg+xml;charset=utf-8,${encodeURIComponent(phone.data.qrSvg)}`} />
           <p className="phone-url">{phone.data.url}</p></>
-        : <p>The phone page is unavailable. Check the phone settings in Folders.</p>)}
+        : <p>{phoneUnavailable(phone.data)}</p>)}
       <div className="form-actions"><Dialog.Close asChild><Button data-dialog-dismiss>Close</Button></Dialog.Close></div>
       <ToastHost />
     </Dialog.Content></Dialog.Portal>

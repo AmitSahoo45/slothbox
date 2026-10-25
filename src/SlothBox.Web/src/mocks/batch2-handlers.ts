@@ -53,6 +53,7 @@ export function createBatch2Handlers(publish: (event: MockEvent) => void, settin
   const protection = (request: Request) => request.headers.get('X-SlothBox') === '1' ? null
     : HttpResponse.json({ title: 'Missing X-SlothBox header', status: 403 }, { status: 403 })
   const ordered = () => [...files.values()].map(item => item.file).sort((a, b) => b.at.localeCompare(a.at))
+  const undoableSince = (since: Date) => ordered().filter(file => file.canUndo && new Date(file.at) >= since)
   const ledger = (month: string): Schema['ReceiptsDto'] => {
     const items = [...files.values()].filter(file => file.file.status === 'filed' && file.file.type === 'receipt' && file.receipt?.date?.startsWith(month))
       .map(file => ({ ...file.receipt!, fileId: file.file.fileId, categoryId: file.categoryId, category: file.file.category }))
@@ -192,8 +193,13 @@ export function createBatch2Handlers(publish: (event: MockEvent) => void, settin
       const denied = protection(request)
       if (denied) return denied
       const { since } = await request.json() as Schema['UndoSinceRequest']
-      const results = ordered().filter(file => file.canUndo && new Date(file.at) >= new Date(since)).map(file => undo(file.fileId))
+      const results = undoableSince(new Date(since)).map(file => undo(file.fileId))
       return HttpResponse.json({ undone: results.filter(item => item.success).length, results })
+    }),
+    http.get('*/api/undo/since', ({ request }) => {
+      const since = new Date(new URL(request.url).searchParams.get('since') ?? '')
+      if (!Number.isFinite(since.getTime())) return HttpResponse.json({ title: 'Choose the time to undo from.', status: 400 }, { status: 400 })
+      return HttpResponse.json({ actions: undoableSince(since).length })
     }),
   ]
 }

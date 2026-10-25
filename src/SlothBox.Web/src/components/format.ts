@@ -43,3 +43,8 @@ export function relativeTime(at: string) {
 export function originLabel(file: Schema['ActivityItemDto']) {
   return file.folderLabel || (file.origin === 'phone' ? 'phone' : 'watched folder')
 }
+// GET /phone has no link while the page is off or the laptop has no private Wi-Fi address (spec 7.9).
+export function phoneUnavailable(phone: Schema['PhoneDto']) {
+  return phone.enabled ? 'No Wi-Fi address found. Connect this laptop to Wi-Fi to use the phone page.'
+    : 'The phone page is switched off.'
+}

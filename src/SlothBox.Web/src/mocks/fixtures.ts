@@ -13,7 +13,7 @@ export const status = {
   embeddingModel: { name: 'embeddinggemma', present: true, loaded: true, onGpu: false },
   database: { ready: true, message: null },
   queue: { waiting: 2, processing: 1 },
-  paused: false, setupComplete: true, averageSecondsPerFileToday: 8,
+  paused: false, pauseReason: null, setupComplete: true, averageSecondsPerFileToday: 8,
 } satisfies Schema['StatusDto']
 export const activity = {
   fileId, at, status: 'filed', type: 'receipt', category: 'Food and drink',
@@ -65,7 +65,7 @@ const undone = {
 
 export const responses = {
   GetStatus: status,
-  Pause: { ...status, paused: true },
+  Pause: { ...status, paused: true, pauseReason: 'user' },
   Resume: status,
   GetActivity: { items: [activity], nextCursor: null },
   GetLazinessStats: {
@@ -80,6 +80,7 @@ export const responses = {
   Refile: details,
   UndoLast: undone,
   UndoSince: { undone: 1, results: [undone] },
+  PreviewUndoSince: { actions: 1 },
   GetReview: [{ file: review, reason: 'missing_amount' }],
   SkipReview: success,
   Search: { items: [{ file: details, score: 0.95, matchedWords: true, matchedMeaning: true }] },
@@ -103,6 +104,7 @@ export const responses = {
   UpdateSettings: settings,
   GetSetup: setup,
   CompleteSetup: setup,
+  CheckOutputFolder: { accepted: true, reason: null },
   GetPhone: phone,
   RotatePhone: { ...phone, url: 'http://127.0.0.1:5081/u/rotated-sample-token' },
   GetIgnored: [{ sha256: 'a'.repeat(64), fileName: 'sample.jpg', at, reason: 'Previously undone' }],

@@ -64,7 +64,7 @@ export function useServerEvents() {
       })
     }
     listen('folder.tidy-progress', data => {
-      client.setQueryData(['folder-progress', data.folderId], data)
+      client.setQueryData(['folder-progress', Number(data.folderId)], data)
       if (Number(data.done) >= Number(data.total)) void client.invalidateQueries({ queryKey: ['folders'] })
     })
     return () => { unsubscribe(); source.close() }

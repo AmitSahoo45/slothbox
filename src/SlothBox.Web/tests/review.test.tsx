@@ -38,9 +38,26 @@ test('3 then Enter refiles with the third category; toast Undo calls the undo en
   fireEvent.keyDown(document, { key: '3' })
   fireEvent.keyDown(document, { key: 'Enter' })
   expect(await screen.findByText('Filed to Receipts / Bills and recharges')).toBeVisible()
-  expect(refile[0]).toMatchObject({ type: 'receipt', categoryId: 3, receipt: { amount: 120 } })
+  expect(refile[0]).toMatchObject({ type: 'receipt', categoryId: 3, receipt: { amount: 120, paymentMethod: 'cash' } })
   fireEvent.click(screen.getByRole('button', { name: 'Undo' }))
   await waitFor(() => expect(undo).toBe(1))
+})
+
+test('a refused File it shows the API message and keeps the item for another try', async () => {
+  server.use(
+    http.get('*/api/categories', () => HttpResponse.json(categories)),
+    http.get('*/api/review', () => HttpResponse.json([readyReceipt()])),
+    http.post('*/api/files/:id/refile', () =>
+      HttpResponse.json({ title: 'Nothing to change.', status: 400 }, { status: 400 })),
+  )
+  render(<App />)
+  const save = await screen.findByRole('button', { name: 'File it' })
+  await waitFor(() => expect(save).toBeEnabled())
+  fireEvent.click(save)
+  expect(await screen.findByText('Nothing to change.')).toBeVisible()
+  expect(screen.getByText('sample.jpg')).toBeVisible()
+  expect(screen.queryByText(/^Filed to/)).not.toBeInTheDocument()
+  expect(save).toBeEnabled()
 })
 
 test('missing amount disables File it until supplied, and typing shortcuts does not hijack fields', async () => {

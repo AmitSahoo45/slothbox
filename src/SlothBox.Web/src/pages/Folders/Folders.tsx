@@ -20,7 +20,7 @@ export function Folders() {
     <h2>Watched folders</h2>
     {folders.isPending && <p role="status">Loading folders…</p>}
     {folders.error && <QueryError error={folders.error} retry={() => { void folders.refetch() }} label="Retry folders" />}
-    <div className="folder-list">{folders.data?.map(folder => <FolderRow key={folder.id} folder={folder} />)}</div>
+    <div className="folder-list">{folders.data?.map(folder => <FolderRow key={folder.id} folder={folder} nativePicker={setup.data?.nativePickerAvailable ?? false} />)}</div>
     {folders.data?.length === 0 && <p className="empty-state">No watched folders yet. Add a folder to get started.</p>}
     <PhoneBlock />
     {adding && setup.data && <AddFolder nativePicker={setup.data.nativePickerAvailable} onClose={() => setAdding(false)} onAdd={async body => {
