@@ -1,24 +1,24 @@
 using System.Net;
-using System.Text;
 using System.Text.Json;
 
 namespace SlothBox.Tests.Api;
 
 public sealed class EndpointsTests(ServerFactory factory) : IClassFixture<ServerFactory>
 {
-    [Theory]
-    [MemberData(nameof(EndpointCases.All), MemberType = typeof(EndpointCases))]
-    public async Task Every_product_operation_returns_an_explicit_problem_stub(string method, string path, string body)
+    // Plan E17: every operation in the contract is built, so none still documents the foundation's 501.
+    [Fact]
+    public async Task No_operation_documents_a_501()
     {
         using var client = factory.DashboardClient();
-        using var request = new HttpRequestMessage(new HttpMethod(method), path);
-        if (body.Length > 0)
-            request.Content = new StringContent(body, Encoding.UTF8, "application/json");
-        using var response = await client.SendAsync(request, TestContext.Current.CancellationToken);
-        response.StatusCode.ShouldBe(HttpStatusCode.NotImplemented);
-        response.Content.Headers.ContentType!.MediaType.ShouldBe("application/problem+json");
-        using var problem = JsonDocument.Parse(await response.Content.ReadAsStringAsync(TestContext.Current.CancellationToken));
-        problem.RootElement.GetProperty("status").GetInt32().ShouldBe(501);
+        using var document = JsonDocument.Parse(await client.GetStringAsync("/openapi/v1.json",
+            TestContext.Current.CancellationToken));
+        var stubs = document.RootElement.GetProperty("paths").EnumerateObject()
+            .SelectMany(path => path.Value.EnumerateObject()
+                .Where(operation => operation.Value.TryGetProperty("responses", out var responses) &&
+                    responses.TryGetProperty("501", out _))
+                .Select(operation => $"{operation.Name.ToUpperInvariant()} {path.Name}"))
+            .ToList();
+        stubs.ShouldBeEmpty();
     }
 
     [Fact]
@@ -121,7 +121,7 @@ public sealed class EndpointsTests(ServerFactory factory) : IClassFixture<Server
             .Where(x => x.Name.StartsWith("/api/", StringComparison.Ordinal))
             .Sum(path => path.Value.EnumerateObject().Count(p =>
                 new[] { "get", "post", "put", "patch", "delete" }.Contains(p.Name)));
-        operations.ShouldBe(40);
+        operations.ShouldBe(41);
         var schemas = root.GetProperty("components").GetProperty("schemas");
         foreach (var name in new[] { "FileFiledEvent", "FileReviewEvent", "FileDuplicateEvent", "FileUndoneEvent",
                      "FileRefiledEvent", "QueueChangedEvent", "StatusChangedEvent", "FolderTidyProgressEvent" })

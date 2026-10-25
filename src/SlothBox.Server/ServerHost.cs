@@ -4,8 +4,6 @@ using System.Text.Json.Serialization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.OpenApi;
 using Pgvector.EntityFrameworkCore;
-using SlothBox.Ai.Analyze;
-using SlothBox.Ai.Embed;
 using SlothBox.Core;
 using SlothBox.Core.Gate;
 using SlothBox.Core.Moving;
@@ -123,16 +121,9 @@ public static class ServerHost
             new NameBuilder(sp.GetRequiredService<ISettingsStore>().Current.Pipeline));
         services.AddSingleton<ISafeMover>(sp => new SafeMover(sp.GetRequiredService<IActionLog>(),
             sp.GetRequiredService<IFileRepository>(), sp.GetRequiredService<IJobQueue>()));
-        services.AddSingleton<IEmbedder>(sp =>
-        {
-            var ollama = sp.GetRequiredService<ISettingsStore>().Current.Ollama;
-            return new Embedder(OllamaClient(ollama), ollama);
-        });
-        services.AddSingleton<IFileAnalyzer>(sp =>
-        {
-            var settings = sp.GetRequiredService<ISettingsStore>().Current;
-            return new FileAnalyzer(OllamaClient(settings.Ollama), settings.Ollama, settings.Pipeline);
-        });
+        // Both follow the Ollama address saved on the Settings page (spec 7.4.8).
+        services.AddSingleton<IEmbedder, LiveEmbedder>();
+        services.AddSingleton<IFileAnalyzer, LiveAnalyzer>();
         services.AddSingleton<IFilePipeline, FilePipeline>();
         services.AddSingleton<IDatabaseStartup, DatabaseStartup>();
         services.AddSingleton<WorkerState>();

@@ -12,3 +12,10 @@ public static class DatabaseConnection
     public static string For(SlothBoxSettings settings, string? password) =>
         new NpgsqlConnectionStringBuilder(settings.Database.ConnectionString) { Password = password }.ConnectionString;
 }
+
+// The password as this process sees it, for the Database check (spec 11). Tests pass their own.
+public sealed record DatabasePassword(string? Value)
+{
+    public static DatabasePassword FromEnvironment() =>
+        new(Environment.GetEnvironmentVariable(DatabaseConnection.PasswordVariable));
+}

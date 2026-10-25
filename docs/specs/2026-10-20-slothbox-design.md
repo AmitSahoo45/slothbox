@@ -355,7 +355,7 @@ Inputs are a list the user manages on the Folders page (Section 7.4.6).
 | A cloud-synced folder (under the `OneDrive`, `OneDriveConsumer` or `OneDriveCommercial` paths, or containing a `Google Drive` or `Dropbox` segment) | Allowed, mode forced to Copy only: moving a file out would delete it from the cloud |
 | Missing or no access | Refused, with the reason |
 
-- **Order:** device paths (`\\?\`, `\\.\`), network, relative paths, drive root, system folder, output folder, watched folders, missing or no access, then cloud. A network path is judged before anything touches it. Device and relative paths (including a bare `D:`) are refused with "Use a full folder path, like D:\Scans."
+- **Order:** device paths (`\\?\`, `\\.\`, `\??\`; `/` counts as `\`, as Windows reads it), network, relative paths, drive root, system folder, output folder, watched folders, missing or no access, then cloud. A network path is judged before anything touches it. Device and relative paths (including a bare `D:`) are refused with "Use a full folder path, like D:\Scans."
 - **"Inside"** compares whole folder names, without regard to case: `Windows Backups` is not inside `Windows`. A folder that only contains a system or output folder is not refused, because watchers do not look into subfolders.
 - **Cloud:** `Dropbox (Work)` and similar team folders count as Dropbox. Google Drive for desktop's `My Drive` and `Shared drives` folders count as Google Drive.
 
@@ -371,7 +371,7 @@ Inputs are a list the user manages on the Folders page (Section 7.4.6).
 
 **Safety sweep**
 - Every 5 min, every enabled folder and the Inbox are listed again, top level only, as the watchers see them (baseline skipped). This catches files the Windows watcher missed. It also runs at once when a watcher overflows or fails, and when a folder is added, switched, located or removed.
-- **Finished paths:** when a job files a file and leaves it where it was, unchanged (a copy-only original), or skips it for its ignored hash (an undone file), SlothBox records the path with the file's size and last-write time (`finished_paths`, 6.2) before the job is marked done. The sweep passes over such a file while both are unchanged, and its queue insert checks the record in the same statement, so a job that ends while a sweep runs is not queued again. The sweep reads only the folder listing and never opens the file, so cloud-only OneDrive files are not downloaded. A changed file is checked again, and an entry is dropped once its file is gone. A listing that fails (no access, a cloud provider error) changes nothing. A locked file, a failed job or one waiting for Gemma is not recorded, so the next sweep tries it again; temporary, hidden, system and baseline files are never queued by the sweep, so their skips need no record.
+- **Finished paths:** when a job files a file and leaves it where it was, unchanged (a copy-only original), or skips it for its ignored hash (an undone file), SlothBox records the path with the file's size and last-write time (`finished_paths`, 6.2) before the job is marked done. The sweep passes over such a file while both are unchanged, and its queue insert checks the record in the same statement, so a job that ends while a sweep runs is not queued again. The sweep reads only the folder listing and never opens the file, so cloud-only OneDrive files are not downloaded. A changed file is checked again, and an entry is dropped once its file is gone. A listing that fails (no access, a cloud provider error) changes nothing. A locked file, a failed job or one waiting for Gemma is not recorded, so the next sweep tries it again; temporary, hidden, system and baseline files are never queued by the sweep, so their skips need no record. "Allow again" (6.6) forgets the finished path where Undo put the file back, in the same transaction as the hash, and asks for a sweep at once, so the file is queued again where it sits.
 
 **Folder problems**
 - If a watched folder is deleted or renamed, its watcher stops. Once the folder is back at its path, the next sweep watches it again.
@@ -558,7 +558,14 @@ public interface ITrayNotifier     // no-op in --headless
     void ShowReviewNotice(Guid fileId, string fileName);
     void SetStatus(string statusLine);
 }
+
+public interface IFirewallRules    // the phone page's inbound rule (7.4.6), found by its display name
+{
+    bool Exists(string displayName);
+}
 ```
+
+Server runs without the App's pieces: with no `IKnownFolders` setup suggests no folders, with no `INativeDialogs` paths are typed (`/system/pick-folder` answers 409), with no `IAutoStart` start at login stays off, and with no `IFirewallRules` the phone block reports the rule missing.
 
 **Repositories, implemented in Data**
 - `IFileRepository`
@@ -1057,7 +1064,8 @@ On startup, each `pending` action is resolved:
 - Needs review items are resolved the same way.
 
 **Un-ignore**
-- Settings lists ignored files and can allow one again.
+- Settings lists ignored files, newest first, each named by where Undo put it back, and can allow one again.
+- "Allow again" removes the hash from `ignored_hashes` and, in the same transaction, the finished path of the file Undo put back (4.5); otherwise the sweep would keep passing over the unchanged file and never queue it. A sweep then runs at once and files it. The record goes only while it can still be that file: the same size, and no file SlothBox took from that path since the undo. A copy of the same content at another path keeps its record until that file changes, and so does a file whose ignored skip is still being recorded when Allow again is clicked.
 
 ### 6.7 Starter categories
 
@@ -1075,7 +1083,7 @@ Seeded on first run. Users can edit, rename or add more on the Categories page (
 - Computed from each file's first filing: `actions` with kind `move` or `copy`, status `done` and no `before` snapshot. Refiles do not count again. Undone files are excluded.
 - **Files filed** counts files that are filed or in Needs review (SlothBox moved them out of the way). Duplicates are counted as caught, not as filed. **Receipts logged** counts filed receipts; their totals are per currency.
 - Days and weeks are the laptop's local time. The bars always show Monday to Sunday of the current week, whatever the range.
-- **Per file:** receipt 30 s, screenshot 15 s, document 15 s, other 5 s. Editable in Settings.
+- **Per file:** receipt 30 s, screenshot 15 s, document 15 s, other 5 s. Editable in Settings: any whole number of seconds from 0 up.
 - **Ranges:** today, this week (Monday to Sunday) and all time.
 - **Figures:** files filed, minutes saved, receipts logged with their total amount per currency, and duplicates caught.
 - The formula is shown in the UI ("How we count") and stated in the DEV post.
@@ -1311,18 +1319,19 @@ Three steps, in order. Moving back is allowed until "Finish setup".
 +----------------------------------------------------------------+
 ```
 
-- **Step 1:** "Browse…" opens the native folder dialog. The folder is created if missing. The rules in Section 4.5 apply in reverse: the output folder cannot be a drive root, a system folder, or inside a watched folder.
+- **Step 1:** "Browse…" opens the native folder dialog. The folder is created if missing, with its `Inbox`. The rules in Section 4.5 apply in reverse: the output folder must be a full path and cannot be a network folder (it holds the watched `Inbox`), a drive root, a system folder, a file, inside or equal to a watched folder, or around one (SlothBox would refile its own files). A cloud folder is allowed. `POST /setup/check-output` answers these rules before anything is saved. While the database is down it can check only the path itself, not the watched folders; finishing checks them all again.
 - **Step 2:** "Add folder" behaves as on the Folders page. Existing files are always left in setup.
 - **Step 3:**
   - "Finish setup" is enabled when all three checks pass.
-  - "Finish anyway" is a quiet link that finishes with the queue paused.
+  - "Finish anyway" is a quiet link that finishes with the queue paused (`pauseReason: user`), so the banner offers Resume.
+  - Finishing saves the folders and `setup_completed_at` in the database, so it is refused (409) while the database is offline, Finish anyway included. It is also refused (409) when `settings.json` cannot be saved (11); a pause Finish anyway set is then lifted again. Everything is checked before anything is written: a refused output folder or folder (400, the folder named in the reason) leaves nothing behind. Folders an earlier, failed try saved are kept, not added twice. The output folder is saved last; the worker and the watchers start then. Setup finishes once: afterwards it answers 409, as the output folder is fixed (D26).
   - The checks re-run every 10 s.
 
-**Track U contract boundary:** there is no separate output-folder validation
-operation in the fixed contract. Setup checks the absolute path and selected
+**Track U contract boundary:** Setup checks the absolute path and selected
 folder overlaps locally; complete output-folder validation remains with
-`POST /api/setup/complete`. Completed setup redirects to Today. A dedicated
-output-folder check is deferred until the contract supports it.
+`POST /api/setup/complete`. Completed setup redirects to Today. The contract
+now has the dedicated output-folder check, `POST /api/setup/check-output`
+(E17), for step 1.
 
 #### 7.4.2 Today (`/`)
 
@@ -1532,7 +1541,7 @@ root. A missing folder's Locate sends the new path as `path` on
 **Phone page block**
 - **QR code** for the phone URL.
 - **New link** confirms "The old link will stop working." Toast: "New link ready".
-- **Firewall reminder:** a one-time hint if the firewall rule is missing. The app checks for the rule by its display name.
+- **Firewall reminder:** a one-time hint if the firewall rule is missing. The app checks for the rule by its display name, `SlothBox phone page` (Section 15 step 5), through `IFirewallRules` in App.
 
 **Headless mode:** "Add folder" shows a path text field instead of the native dialog.
 
@@ -1574,7 +1583,7 @@ arrive between the check and save or removal.
 |---|---|
 | Appearance | Theme: System / Light / Dark |
 | Startup | "Start SlothBox when I sign in" switch (same setting as the tray) |
-| AI | Ollama address, both models with status, [Check again]; [Rebuild missing search data] |
+| AI | Ollama address (http or https; a query, fragment or user name is refused, and a path behind a proxy is kept with a trailing slash; used from the next call, no restart), both models with status, [Check again]; [Rebuild missing search data] |
 | Laziness meter | Seconds per receipt, screenshot, document, other |
 | Ignored files | Undone files SlothBox will not refile: name, when undone, [Allow again] |
 | About | Repo link |
@@ -1790,7 +1799,8 @@ Tray notifications appear only when a file goes to Needs review. Clicking one op
 - Safari is expected to convert HEIC to JPEG on upload. Verify on a real iPhone.
 
 **LAN address**
-- The QR code uses the private IPv4 address of the interface with the default route.
+- The QR code uses the private IPv4 address (10/8, 172.16/12, 192.168/16) of the interface with the default route, and port 5081, where the phone listener is (A1), whatever `Phone.Port` says. Without one, or while the phone page is off, `GET /phone` has no link and no QR code.
+- "New link" saves a new token; the old link answers 401 at once.
 
 ### 7.10 Front-end technology and structure
 
@@ -1916,12 +1926,13 @@ src/SlothBox.Web/
 | PATCH | `/folders/{id}` | `{ enabled?, mode?, label?, path? }`; `path` is Locate (4.5); 400 when refused, 409 while the folder is still at its path |
 | POST | `/folders/{id}/tidy-existing` | Queue the baseline files; 409 while the folder is off or missing |
 | DELETE | `/folders/{id}` | Stop watching |
-| POST | `/system/pick-folder` | Opens the native dialog; returns `{ path }` or `{ path: null }` when cancelled; 409 in headless mode |
-| GET, PUT | `/settings` | Theme is UI-only; this covers start at login, laziness seconds, Ollama address |
-| GET, POST | `/setup`, `/setup/complete` | Setup state; finishing setup (output folder, initial folders) |
+| POST | `/system/pick-folder` | Opens the native dialog; returns `{ path }` or `{ path: null }` when cancelled; 409 in headless mode or when the dialog fails |
+| GET, PUT | `/settings` | Theme is UI-only; this covers start at login, laziness seconds, Ollama address. PUT: 400 for negative seconds or an Ollama address the calls could not use (not http or https, or with a query, fragment or user name), 409 when start at login cannot be changed (no App, or Windows refused) or `settings.json` cannot be saved; a refused change keeps neither the Run key nor the values |
+| GET, POST | `/setup`, `/setup/complete` | Setup state; finishing setup (output folder, initial folders). 400 with the rule's reason when the output folder or a folder is refused, 409 once setup is finished, while the database is offline, or when `settings.json` cannot be saved (7.4.1) |
+| POST | `/setup/check-output` | Body `{ path }`; whether the output-folder rules (7.4.1) accept it, with the reason when not |
 | GET | `/phone` | Phone URL, QR code as SVG, firewall rule present |
 | POST | `/phone/rotate` | New token |
-| GET, DELETE | `/ignored`, `/ignored/{sha256}` | List, allow again |
+| GET, DELETE | `/ignored`, `/ignored/{sha256}` | List, allow again (also forgets the file's finished path, 6.6); 404 for a hash that is not ignored |
 | POST | `/search-data/rebuild` | Re-embed files with no vector |
 
 **Native folder dialog**
@@ -2081,6 +2092,8 @@ src/SlothBox.Web/
 The file is read leniently: comments, trailing commas and any name case are accepted. A file without a phone token gets one added and saved. A file that cannot be read is reported on every read until it is fixed; it is never overwritten.
 
 The app adds the password from `SLOTHBOX_DB_PASSWORD` at startup. If the variable is missing, the Database check fails with "Set SLOTHBOX_DB_PASSWORD (see README setup)".
+
+Setup (the output folder), the Settings page (laziness seconds, Ollama address) and "New link" (the phone token) save the file. Each save reads the file again first, so a hand edit made since startup is kept and a file that cannot be read is reported and never overwritten; it is written beside the file and flushed to the disk, then moved over it, so a crash or a power cut never leaves half a file. A saved file loses hand-written comments.
 
 ---
 
