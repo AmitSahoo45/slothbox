@@ -24,14 +24,16 @@ internal sealed class DashboardHarness : IAsyncDisposable
     private int? _folderId;
     private int _photos;
 
-    private DashboardHarness(PipelineHarness pipeline)
+    private DashboardHarness(PipelineHarness pipeline, Action<IServiceCollection>? services)
     {
         Pipeline = pipeline;
-        _server = new DashboardServer(this);
+        _server = new DashboardServer(this, services);
     }
 
-    public static async Task<DashboardHarness> CreateAsync(PostgresFixture postgres) =>
-        new(await PipelineHarness.CreateAsync(postgres));
+    // services: what the App would add (known folders, the folder dialog, the Run key), or other replacements.
+    public static async Task<DashboardHarness> CreateAsync(PostgresFixture postgres,
+        Action<IServiceCollection>? services = null) =>
+        new(await PipelineHarness.CreateAsync(postgres), services);
 
     private static CancellationToken Ct => TestContext.Current.CancellationToken;
 
@@ -117,7 +119,8 @@ internal sealed class DashboardHarness : IAsyncDisposable
         await Pipeline.DisposeAsync();
     }
 
-    private sealed class DashboardServer(DashboardHarness h) : WebApplicationFactory<Server.Program>
+    private sealed class DashboardServer(DashboardHarness h, Action<IServiceCollection>? extra)
+        : WebApplicationFactory<Server.Program>
     {
         protected override void ConfigureWebHost(IWebHostBuilder builder) =>
             builder.UseEnvironment("Testing").ConfigureTestServices(services =>
@@ -127,6 +130,7 @@ internal sealed class DashboardHarness : IAsyncDisposable
                 services.AddSingleton<IOllamaStatus>(h.Gemma);
                 services.AddSingleton<IFileLauncher>(h.Launcher);
                 services.AddSingleton<IEmbedder>(h.Pipeline.Embedder);
+                extra?.Invoke(services);
             });
     }
 }

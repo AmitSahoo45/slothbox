@@ -45,6 +45,9 @@ public sealed class SearchServiceTests(PostgresFixture postgres)
     private sealed class Settings : ISettingsStore
     {
         public SlothBoxSettings Current { get; } = new();
+
+        public SlothBoxSettings Update(Func<SlothBoxSettings, SlothBoxSettings> change) =>
+            throw new NotSupportedException();
     }
 
     // A synthetic file row; a done action marks its filing as finished (spec 6.3 counts only those).

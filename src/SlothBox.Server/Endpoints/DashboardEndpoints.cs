@@ -8,7 +8,7 @@ using SlothBox.Server.Worker;
 
 namespace SlothBox.Server.Endpoints;
 
-// The dashboard API of spec 8.2 that returns real data (E11). Routes not built yet stay in StubEndpoints.
+// The dashboard API of spec 8.2 that returns real data (E11). StubEndpoints maps the routes that follow these.
 public static class DashboardEndpoints
 {
     private const int PageSize = 50;

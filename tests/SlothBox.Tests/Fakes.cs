@@ -68,12 +68,73 @@ internal sealed class RecordingLauncher : IFileLauncher
 
 internal sealed class FixedSettings(SlothBoxSettings settings) : ISettingsStore
 {
+    private readonly Lock _gate = new();
     private volatile SlothBoxSettings _current = settings;
 
     public SlothBoxSettings Current
     {
         get => _current;
         set => _current = value;
+    }
+
+    public SlothBoxSettings Update(Func<SlothBoxSettings, SlothBoxSettings> change)
+    {
+        lock (_gate)
+            return _current = change(_current);
+    }
+}
+
+// settings.json broken by a hand edit after startup (spec 11): reads give what was loaded, every save fails.
+internal sealed class UnsavableSettings(SlothBoxSettings settings) : ISettingsStore
+{
+    public const string Problem = "settings.json could not be read.";
+
+    public SlothBoxSettings Current => settings;
+
+    public SlothBoxSettings Update(Func<SlothBoxSettings, SlothBoxSettings> change) =>
+        throw new InvalidOperationException(Problem);
+}
+
+// What the App would report for Windows' Downloads and Screenshots folders.
+internal sealed class FakeKnownFolders : IKnownFolders
+{
+    public string? Downloads { get; set; }
+    public string? Screenshots { get; set; }
+}
+
+// The App's folder dialog: answers with the scripted path (null when cancelled), or fails.
+internal sealed class FakeDialogs : INativeDialogs
+{
+    public string? Answer { get; set; }
+    public Exception? Failure { get; set; }
+
+    public Task<string?> PickFolderAsync(CancellationToken ct) =>
+        Failure is { } failure ? Task.FromException<string?>(failure) : Task.FromResult(Answer);
+}
+
+// The Run key as the App would keep it.
+internal sealed class FakeAutoStart : IAutoStart
+{
+    public bool IsEnabled { get; private set; }
+    public Exception? Failure { get; set; }
+
+    public void SetEnabled(bool enabled)
+    {
+        if (Failure is not null)
+            throw Failure;
+        IsEnabled = enabled;
+    }
+}
+
+// Windows Firewall as the App would see it: the display names of its inbound rules.
+internal sealed class FakeFirewall(params string[] rules) : IFirewallRules
+{
+    public List<string> Asked { get; } = [];
+
+    public bool Exists(string displayName)
+    {
+        Asked.Add(displayName);
+        return rules.Contains(displayName);
     }
 }
 

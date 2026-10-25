@@ -5,6 +5,8 @@ namespace SlothBox.Core;
 public interface IFolderRules
 {
     FolderCheck Check(string path, IReadOnlyList<WatchedFolder> existing, string outputRoot);
+    // First-run setup (spec 7.4.1 step 1): why SlothBox may not sort files into this folder, or null when it may.
+    string? CheckOutput(string path, IReadOnlyList<WatchedFolder> watched);
 }
 
 public interface IPlatformPaths
@@ -124,6 +126,12 @@ public interface ITrayNotifier
     void SetStatus(string statusLine);
 }
 
+// Windows Firewall, implemented in App: whether an inbound rule with this display name exists (spec 7.4.6).
+public interface IFirewallRules
+{
+    bool Exists(string displayName);
+}
+
 public interface IFileRepository
 {
     Task<FileRecord?> GetAsync(Guid id, CancellationToken ct);
@@ -197,6 +205,8 @@ public interface IWatchedFolderRepository
 public interface ISettingsStore
 {
     SlothBoxSettings Current { get; }
+    // Saves a change (setup, the Settings page, a new phone link); Current has it at once. Returns the saved settings.
+    SlothBoxSettings Update(Func<SlothBoxSettings, SlothBoxSettings> change);
 }
 
 public interface IAppState

@@ -61,6 +61,8 @@ public sealed record PickFolderResultDto(string? Path);
 public sealed record SettingsDto(bool StartAtLogin, LazinessSettings Laziness, string OllamaUrl);
 public sealed record SetupDto(bool Complete, string OutputRoot, IReadOnlyList<InitialFolderDto> SuggestedFolders,
     StatusDto Status, bool NativePickerAvailable);
+// Setup step 1 (spec 7.4.1): whether SlothBox may sort files into the folder, and why not.
+public sealed record OutputFolderCheckDto(bool Accepted, string? Reason);
 public sealed record PhoneDto(bool Enabled, string? Url, string? QrSvg, bool FirewallRulePresent);
 public sealed record IgnoredFileDto(string Sha256, string FileName, DateTimeOffset At, string Reason);
 public sealed record RebuildResultDto(int Queued);

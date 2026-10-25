@@ -27,6 +27,9 @@ public sealed class PhoneKestrelTests : IAsyncLifetime
     private sealed class FixedSettings(SlothBoxSettings settings) : ISettingsStore
     {
         public SlothBoxSettings Current => settings;
+
+        public SlothBoxSettings Update(Func<SlothBoxSettings, SlothBoxSettings> change) =>
+            throw new NotSupportedException();
     }
 
     private sealed class NoQueue : IJobQueue

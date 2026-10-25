@@ -29,7 +29,8 @@ public sealed class LazinessMeter(DashboardQueries queries, ISettingsStore setti
 
         return new LazinessStatsDto(
             inRange.Count,
-            inRange.Sum(filing => Seconds(filing.Type, laziness)) / 60.0,
+            // Summed as long: Settings accepts any whole number of seconds (spec 7.4.8), and an int sum would overflow.
+            inRange.Sum(filing => (long)Seconds(filing.Type, laziness)) / 60.0,
             receipts.Count,
             receipts.Where(receipt => receipt is { Amount: not null, Currency: not null })
                 .GroupBy(receipt => receipt.Currency!)
