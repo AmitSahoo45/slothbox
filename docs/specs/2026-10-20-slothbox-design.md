@@ -1003,6 +1003,8 @@ The query runs in a transaction that first runs `SET LOCAL hnsw.ef_search = 100`
 
 The same transaction runs `SET LOCAL hnsw.iterative_scan = strict_order` (pgvector 0.8). HNSW applies the filters after it picks its candidates. Without the iterative scan, a narrow filter, or many undone files that keep their vectors, can leave the meaning branch short or empty.
 
+The iterative scan cannot find a row that the HNSW graph does not link to. pgvector builds that graph at random, and no setting seeds it. So even with the scan, a narrow filter can miss some meaning matches. The test therefore checks only what held in every measured run: its 20 receipts all lie beyond 130 nearer documents, and a type filter must return at least one receipt and nothing else. In 600 runs it returned between 3 and 20 of the 20 (all 20 in about four runs out of five). Relaxed ordering returned the same counts as strict ordering on the same graph, so the ordering mode does not cause the misses. With the iterative scan off, 154 of 200 runs returned no receipt, so the test catches a missing scan about three times in four, not every time.
+
 ### 6.4 Safe move
 
 1. Insert the action as `pending` (from, to, sha256, kind, `before`). In the same transaction, the file row takes its new status, type, category, title, review reason and receipt fields.

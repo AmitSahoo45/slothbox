@@ -1,35 +1,111 @@
 # SlothBox
 
-A local file butler for Windows. The design combines watched folders, phone
-uploads, a receipt ledger, reversible filing and keyword/meaning search.
-
-This repository currently contains the Track 0 foundation. Product endpoints
-are intentionally unimplemented and return HTTP 501. File watching, filing,
-model calls and real-folder access are not enabled.
-
-## Design and plan
+A local file butler for Windows. SlothBox watches the folders you choose, such as Downloads and Screenshots. A local
+AI model (Gemma, running in Docker on your own PC) reads each new file. SlothBox then gives the file a clear name and
+files it in a sorted folder. Receipts go into a monthly ledger, every move can be undone, and you can search your files
+by words or by meaning. A small upload page lets your phone send photos over your home Wi-Fi. Files never leave the PC.
 
 - [Design spec](docs/specs/2026-10-20-slothbox-design.md)
 - [Implementation plan](docs/plans/2026-10-20-slothbox-implementation-plan.md)
 - [Repository guidance](AGENTS.md)
 
-## Local prerequisites
+## What you need
 
-Windows 10/11, .NET SDK 10.0.400, Node 22.20.0 and Docker Desktop with Linux
-containers. Keep Docker's disk image and all package caches on D:.
-If the caches are not on D:, set them yourself, then restart the terminal:
+- Windows 10 or 11, 64-bit.
+- [Docker Desktop](https://www.docker.com/products/docker-desktop/) with Linux containers.
+- An NVIDIA GPU with at least 8 GB of video memory is recommended. Without one, Gemma runs on the CPU and is much
+  slower.
+- About 17 GB of free disk space for Docker: about 10 GB of images and 7 GB of models.
+
+To build the exe yourself you also need the .NET SDK 10.0.400 and Node 22.20.0.
+
+## One-time setup
+
+Run these in PowerShell from the repository folder.
+
+1. Choose a database password and save it for your Windows user. Docker and SlothBox both read it from this variable.
+   Then open a new PowerShell window so the variable is visible there.
+
+   ```powershell
+   [Environment]::SetEnvironmentVariable('SLOTHBOX_DB_PASSWORD','<choose a password>','User')
+   ```
+
+2. Start the database and Ollama:
+
+   ```powershell
+   docker compose -f docker/compose.yaml up -d
+   ```
+
+   This starts two containers, `slothbox-postgres` (port 5433) and `slothbox-ollama` (port 11436). Both listen on
+   127.0.0.1 only and start again with Docker Desktop. The compose file gives Ollama the NVIDIA GPU. On a PC without
+   an NVIDIA GPU, delete the `deploy:` block under `ollama` in `docker/compose.yaml` first.
+
+3. Download the two models (about 7 GB) and check that Gemma answers:
+
+   ```powershell
+   docker exec slothbox-ollama ollama pull gemma4:e4b; docker exec slothbox-ollama ollama pull embeddinggemma; docker exec slothbox-ollama ollama run gemma4:e4b "reply ok"
+   ```
+
+   Then `docker exec slothbox-ollama ollama ps` should show `100% GPU` for `gemma4:e4b`.
+
+4. Optional, for the phone page: allow its port on private networks. Run this once in an administrator PowerShell,
+   and make sure Windows treats your home Wi-Fi as a private network.
+
+   ```powershell
+   New-NetFirewallRule -DisplayName "SlothBox phone page" -Direction Inbound -Protocol TCP -LocalPort 5081 -Action Allow -Profile Private
+   ```
+
+To check the compose file, use `docker compose -f docker/compose.yaml config --quiet`. Plain `docker compose config`
+prints the password.
+
+## Build the single exe
 
 ```powershell
-[Environment]::SetEnvironmentVariable('NUGET_PACKAGES','D:\.nuget\packages','User'); [Environment]::SetEnvironmentVariable('NUGET_HTTP_CACHE_PATH','D:\.nuget\v3-cache','User'); npm config set cache D:\.npm-cache --global
+npm --prefix src/SlothBox.Web ci
+npm --prefix src/SlothBox.Web run build
+dotnet publish src/SlothBox.App -c Release -r win-x64 --self-contained -p:PublishSingleFile=true
 ```
 
-Only the owner manages `docker/.env`. Do not read, print or edit it, and never run
-plain `docker compose config`. Validate with `docker compose config --quiet`
-from `docker/`; no shell password variable is required. The sample
-`docker/.env.example` contains only a placeholder
-for CI configuration validation. Do not create a repo-local settings file.
-Model/image downloads over 1 GB require explicit approval; Track 0 does not
-pull or start Ollama. Existing projects' containers must remain untouched.
+The result is `src\SlothBox.App\bin\Release\net10.0-windows\win-x64\publish\SlothBox.exe`. It contains the .NET
+runtime and the dashboard, so the PC that runs it needs no .NET install. Build the UI before publishing: the
+dashboard is built into the exe.
+
+Keep `libSkiaSharp.dll` from the same folder next to the exe. It is the native image library that reads photos and
+screenshots, and single-file publishing leaves it outside the exe. Copy those two files anywhere you like. The other
+files in that folder are not needed to run SlothBox.
+
+## Run
+
+1. Start Docker Desktop and wait until `slothbox-postgres` and `slothbox-ollama` are running.
+2. Double-click `SlothBox.exe`. A tray icon appears; it may be under the ^ arrow.
+3. Double-click the tray icon, or right-click it and choose **Open dashboard**. The dashboard is at
+   http://127.0.0.1:5080/.
+4. The first time, the dashboard shows a three-step setup: the output folder for sorted files, the folders to watch,
+   and a check that Gemma and the database are ready. Nothing moves until setup is finished.
+
+Good to know:
+
+- Files that are already in a folder when you add it stay where they are. **Tidy them now** on the Folders page files
+  them, and **Undo since…** on Today puts them back.
+- The tray menu has Open dashboard, Pause or Resume, Undo last, Start at login and Exit.
+- Starting the exe again while it runs just opens the dashboard.
+- `SlothBox.exe --headless` runs without the tray icon. Folder paths are then typed instead of picked.
+- Settings are in `%LOCALAPPDATA%\SlothBox\settings.json`. Watched folders, categories and the file history are in
+  the database.
+- If Docker stops, the dashboard shows a banner and nothing moves. SlothBox carries on by itself once Docker is back.
+- The phone page's QR code and link are on the Folders page. The phone must be on the same Wi-Fi.
+
+## Development
+
+```powershell
+npm --prefix src/SlothBox.Web run build
+dotnet run --project src/SlothBox.App
+```
+
+`dotnet run --project src/SlothBox.App -- --headless` starts the same server without a tray. For live UI changes,
+run `npm --prefix src/SlothBox.Web run dev`; Vite binds to loopback and proxies API and SSE requests to the local
+server. Fonts are bundled locally. Web assets are embedded in Server on build. OpenAPI:
+`http://127.0.0.1:5080/openapi/v1.json`.
 
 ## Verify
 
@@ -45,34 +121,6 @@ Database tests require Docker and create only `slothbox-test-*` containers
 (plus the Testcontainers reaper). They use synthetic data and the pinned
 pgvector image. The CI workflow includes Linux tests, web checks and a Windows
 App build; local results do not claim that hosted CI has run.
-
-## Run the foundation
-
-Build the web assets before running the shell:
-
-```powershell
-npm --prefix src/SlothBox.Web run build
-dotnet run --project src/SlothBox.App
-```
-
-The tray has Exit. `--headless` starts the same server without a tray:
-
-```powershell
-dotnet run --project src/SlothBox.App -- --headless
-```
-
-Dashboard/API: `http://127.0.0.1:5080`. OpenAPI:
-`http://127.0.0.1:5080/openapi/v1.json`. The separate phone listener on 5081
-exposes only the phone route stubs. Neither listener starts a file pipeline.
-
-For UI development:
-
-```powershell
-npm --prefix src/SlothBox.Web run dev
-```
-
-Vite binds to loopback and proxies API and SSE requests to the local server.
-Fonts are bundled locally. Web assets are embedded in Server on build.
 
 ## API contracts and mocks
 
