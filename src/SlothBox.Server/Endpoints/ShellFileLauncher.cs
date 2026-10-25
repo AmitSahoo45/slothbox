@@ -16,8 +16,13 @@ public sealed class ShellFileLauncher : IFileLauncher
     public void Reveal(string path)
     {
         RequireWindows();
-        using var process = Process.Start(new ProcessStartInfo("explorer.exe", $"/select,\"{path}\""));
+        using var process = Process.Start(RevealStart(path));
     }
+
+    // Explorer from the Windows folder, by its full path, so no other explorer.exe on the search path starts instead.
+    public static ProcessStartInfo RevealStart(string path) =>
+        new(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "explorer.exe"),
+            $"/select,\"{path}\"");
 
     private static void RequireWindows()
     {

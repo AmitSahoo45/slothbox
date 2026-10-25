@@ -238,13 +238,14 @@ flowchart LR
 | Mode | How |
 |---|---|
 | Default | Tray icon visible |
-| Auto-start at logon | Toggle in the tray menu and on the Settings page. Writes `HKCU\Software\Microsoft\Windows\CurrentVersion\Run\SlothBox = "<path to exe>"`. No admin rights needed. |
+| Auto-start at logon | Toggle in the tray menu and on the Settings page. Writes `HKCU\Software\Microsoft\Windows\CurrentVersion\Run\SlothBox = "<path to exe>"`. No admin rights needed. The toggle shows on only while the value starts this exe. |
 | Manual | Double-click the exe |
-| `--headless` | No tray icon; everything else runs. The native folder picker is unavailable, so paths are typed instead (A16). |
+| `--headless` | No tray icon; everything else runs, including known folders, the Run key and the firewall check. The native folder picker is unavailable, so paths are typed instead (A16). |
 
 **Single instance**
 - A named mutex, `Local\SlothBox`.
 - A second launch opens the dashboard in the browser and exits.
+- If SlothBox cannot start (most often another program holds port 5080 or 5081), a message box says why, and it exits.
 
 **Startup sequence**
 1. Acquire the mutex.
@@ -553,7 +554,7 @@ public interface IAutoStart        // HKCU Run key
     void SetEnabled(bool enabled);
 }
 
-public interface ITrayNotifier     // no-op in --headless
+public interface ITrayNotifier     // none in --headless; Server's tray feed calls it (7.8)
 {
     void ShowReviewNotice(Guid fileId, string fileName);
     void SetStatus(string statusLine);
@@ -565,7 +566,7 @@ public interface IFirewallRules    // the phone page's inbound rule (7.4.6), fou
 }
 ```
 
-Server runs without the App's pieces: with no `IKnownFolders` setup suggests no folders, with no `INativeDialogs` paths are typed (`/system/pick-folder` answers 409), with no `IAutoStart` start at login stays off, and with no `IFirewallRules` the phone block reports the rule missing.
+App hands these to Server when it builds the host. Server runs without the App's pieces: with no `IKnownFolders` setup suggests no folders, with no `INativeDialogs` paths are typed (`/system/pick-folder` answers 409), with no `IAutoStart` start at login stays off, with no `IFirewallRules` the phone block reports the rule missing, and with no `ITrayNotifier` there is no tray to update.
 
 **Repositories, implemented in Data**
 - `IFileRepository`
@@ -1624,7 +1625,7 @@ Opens from the right, 440 px wide, over any page.
 +--------------------------------------------+
 ```
 
-- **Open** and **Show in folder** are performed by `SlothBox.exe` through the API: the default app, or Explorer with the file selected. Browsers cannot open local files themselves.
+- **Open** and **Show in folder** are performed by `SlothBox.exe` through the API: the default app, or Explorer with the file selected. Explorer starts by its full path in the Windows folder, never by name from the search path. Browsers cannot open local files themselves.
 - **Change** opens type and category pickers. It refiles the file, which can be undone.
 - **Focus** is trapped while the drawer is open. `Esc` closes it and returns focus to the row that opened it.
 
@@ -1720,14 +1721,20 @@ Built on Radix Primitives (Dialog, DropdownMenu, Popover, Select, Switch, Tabs, 
 
 ### 7.8 Tray menu
 
-- **Status line:** Running / Paused / Gemma offline / Database offline, plus the number of files waiting.
-- **Open dashboard**
-- **Pause / Resume**
-- **Undo last**
-- **Start at login** (checkbox)
+- **Status line:** whatever stops filing comes first, then the number of files waiting (the sidebar's count). It changes with every status change, is checked again every 30 s, and is also the icon's tooltip.
+  - "Database offline" (no count)
+  - "Waiting for setup"
+  - "Gemma is offline, N files waiting" (Ollama is not answering, or the queue is paused for Gemma)
+  - "Paused: the output drive is full, N files waiting"
+  - "Paused, N files waiting"
+  - "Running, N files waiting"
+- **Open dashboard** (double-clicking the icon does the same)
+- **Pause / Resume** (as on the dashboard: Resume keeps the queue paused while Gemma or a model is missing)
+- **Undo last** (as on the dashboard; a notice says where the file is now, or why nothing was undone)
+- **Start at login** (checkbox; the Run key in 4.3)
 - **Exit**
 
-Tray notifications appear only when a file goes to Needs review. Clicking one opens `/review`.
+Tray notifications appear only when a file goes to Needs review: one per file, with its name. Clicking one opens `/review`.
 
 ### 7.9 Phone page (`http://<laptop LAN IPv4>:5081/u/<token>`)
 
@@ -1914,6 +1921,7 @@ src/SlothBox.Web/
 **Native folder dialog**
 - `/system/pick-folder` marshals to the WinForms UI thread and shows `FolderBrowserDialog`.
 - The dialog's owner window is top-most, so the dialog appears in front of the browser instead of behind it.
+- A second request while the dialog is open gets the same answer instead of a second dialog.
 
 ### 8.3 Server-Sent Events
 

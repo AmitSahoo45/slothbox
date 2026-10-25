@@ -8,6 +8,7 @@ using SlothBox.Data.Files;
 using SlothBox.Data.Receipts;
 using SlothBox.Server.Phone;
 using SlothBox.Server.Settings;
+using SlothBox.Server.Tray;
 using SlothBox.Server.Worker;
 
 namespace SlothBox.Server.Endpoints;
@@ -23,6 +24,9 @@ public static class DashboardServices
         services.AddSingleton(_ => DatabasePassword.FromEnvironment());
         services.AddSingleton<WorkerStats>();
         services.AddSingleton<StatusService>();
+        services.AddSingleton<WorkerControl>();
+        // The tray menu's commands are the dashboard's own (spec 7.8).
+        services.AddSingleton<TrayCommands>();
         services.AddSingleton<DashboardQueries>();
         services.AddSingleton<LazinessMeter>();
         services.AddSingleton<FileAccessGuard>();

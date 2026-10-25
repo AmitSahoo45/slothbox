@@ -21,6 +21,7 @@ using SlothBox.Server.Endpoints;
 using SlothBox.Server.Events;
 using SlothBox.Server.Phone;
 using SlothBox.Server.Settings;
+using SlothBox.Server.Tray;
 using SlothBox.Server.Watching;
 using SlothBox.Server.Worker;
 
@@ -36,7 +37,7 @@ public static class ServerHost
         Timeout = TimeSpan.FromSeconds(ollama.AnalyzeTimeoutSeconds + 30)
     };
 
-    public static WebApplication Build(string[] args)
+    public static WebApplication Build(string[] args, Action<IServiceCollection>? windows = null)
     {
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions
         {
@@ -60,10 +61,13 @@ public static class ServerHost
         {
             builder.Services.AddHostedService<PipelineWorker>();
             builder.Services.AddHostedService<WatchService>();
+            builder.Services.AddHostedService<TrayFeed>();
         }
         builder.Services.AddSingleton(new PhonePage(EmbeddedUi.Files()));
         DashboardServices.Add(builder.Services);
         WatchingServices.Add(builder.Services);
+        // The App's Windows pieces (spec 4.7): the folder dialog, known folders, the Run key, the firewall and the tray.
+        windows?.Invoke(builder.Services);
         builder.Services.AddProblemDetails();
         builder.Services.ConfigureHttpJsonOptions(options =>
             options.SerializerOptions.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.SnakeCaseLower)));

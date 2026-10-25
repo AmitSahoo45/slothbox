@@ -4,7 +4,6 @@ using SlothBox.Core.Refiling;
 using SlothBox.Data.Dashboard;
 using SlothBox.Server.Api;
 using SlothBox.Server.Events;
-using SlothBox.Server.Worker;
 
 namespace SlothBox.Server.Endpoints;
 
@@ -21,23 +20,10 @@ public static class DashboardEndpoints
         var api = app.MapGroup("/api").WithTags("Dashboard");
         StubEndpoints.Document<StatusDto>(api.MapGet("/status",
             (StatusService status, CancellationToken ct) => status.GetAsync(ct)), "GetStatus");
-        StubEndpoints.Document<StatusDto>(api.MapPost("/pause", (WorkerState worker, StatusService status,
-            CancellationToken ct) =>
-        {
-            worker.Pause(PauseReason.User);
-            return status.GetAsync(ct);
-        }), "Pause");
-        StubEndpoints.Document<StatusDto>(api.MapPost("/resume", async (WorkerState worker, StatusService status,
-            CancellationToken ct) =>
-        {
-            worker.Resume();
-            var current = await status.GetAsync(ct);
-            if (current.Gemma.Ready && current.VisionModel.Present && current.EmbeddingModel.Present)
-                return current;
-            // Without Gemma and both models every waiting file would go to Needs review (spec 9): stay paused.
-            worker.Pause(PauseReason.GemmaOffline);
-            return current with { Paused = true, PauseReason = PauseReason.GemmaOffline };
-        }), "Resume");
+        StubEndpoints.Document<StatusDto>(api.MapPost("/pause", (WorkerControl control, CancellationToken ct) =>
+            control.PauseAsync(ct)), "Pause");
+        StubEndpoints.Document<StatusDto>(api.MapPost("/resume", (WorkerControl control, CancellationToken ct) =>
+            control.ResumeAsync(ct)), "Resume");
         StubEndpoints.Document<ActivityPageDto>(api.MapGet("/activity", GetActivityAsync), "GetActivity")
             .ProducesProblem(400);
         StubEndpoints.Document<LazinessStatsDto>(api.MapGet("/stats/laziness", GetLazinessAsync), "GetLazinessStats")
@@ -200,8 +186,8 @@ public static class DashboardEndpoints
         return Results.Ok(details);
     }
 
-    // Each file put back is announced, so open pages refresh it (spec 8.3 file.undone).
-    private static UndoResultDto Undone(UndoResult result, ServerEvents events)
+    // Each file put back is announced, so open pages refresh it (spec 8.3 file.undone). The tray's Undo last too.
+    internal static UndoResultDto Undone(UndoResult result, ServerEvents events)
     {
         if (result.Succeeded)
             events.Publish(new ServerEvent("file.undone", new FileUndoneEvent(result.FileId)));
