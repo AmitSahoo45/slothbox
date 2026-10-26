@@ -9,7 +9,7 @@ import type { Schema } from '../../api/types'
 import { Button } from '../Button'
 import { QueryError } from '../QueryError'
 import { Thumbnail } from '../Thumbnail'
-import { displayDate, displayTime, money, statusNames, typeNames } from '../format'
+import { displayDate, displayTime, money, paymentNames, statusNames, typeNames } from '../format'
 import { ChangeFile } from './ChangeFile'
 import { ToastHost } from '../ToastHost'
 
@@ -43,7 +43,7 @@ function Details({ details }: { details: Schema['FileDetailsDto'] }) {
       <dt>Date</dt><dd>{details.receipt.date ? displayDate(details.receipt.date) : 'Not found'}</dd>
       <dt>Amount</dt><dd className="amount">{details.receipt.amount != null
         ? details.receipt.currency ? money(details.receipt.amount, details.receipt.currency) : details.receipt.amount : 'Not found'}</dd>
-      <dt>Paid by</dt><dd>{{ upi: 'UPI', card: 'Card', cash: 'Cash', netbanking: 'Net banking', unknown: 'Unknown' }[details.receipt.paymentMethod]}</dd>
+      <dt>Paid by</dt><dd>{paymentNames[details.receipt.paymentMethod]}</dd>
     </dl>}
     <p className="file-caption">{details.caption}</p>
     <section className="file-history"><h3>History</h3>

@@ -3,7 +3,7 @@ import { useMutation, useQuery } from '@tanstack/react-query'
 import { Link, useSearchParams } from 'react-router-dom'
 import { receiptCsv, request } from '../../api/client'
 import { QueryError } from '../../components/QueryError'
-import { displayDate, localDate, money } from '../../components/format'
+import { displayDate, localDate, money, paymentNames } from '../../components/format'
 import { PhoneQr } from '../Today/PhoneQr'
 
 export function Receipts() {
@@ -49,7 +49,7 @@ export function Receipts() {
             const link = event.currentTarget.querySelector('a'); link?.focus(); link?.click()
           }}><td>{item.date ? displayDate(item.date) : 'Unknown date'}</td>
             <td><Link to={`?${next}`}>{item.vendor || 'Unknown vendor'}</Link></td><td>{item.category}</td>
-            <td>{item.paymentMethod === 'upi' ? 'UPI' : item.paymentMethod === 'unknown' ? 'Unknown' : item.paymentMethod.charAt(0).toUpperCase() + item.paymentMethod.slice(1)}</td>
+            <td>{paymentNames[item.paymentMethod]}</td>
             <td className="receipt-amount">{item.amount != null && item.currency ? money(item.amount, item.currency) : 'Not recorded'}</td></tr>
         })}</tbody>
       </table></div>

@@ -67,12 +67,9 @@ dotnet publish src/SlothBox.App -c Release -r win-x64 --self-contained -p:Publis
 ```
 
 The result is `src\SlothBox.App\bin\Release\net10.0-windows\win-x64\publish\SlothBox.exe`. It contains the .NET
-runtime and the dashboard, so the PC that runs it needs no .NET install. Build the UI before publishing: the
+runtime, the dashboard and everything else SlothBox needs, so it is the only file to copy, and the PC that runs it
+needs no .NET install. The other files in that folder are not needed to run it. Build the UI before publishing: the
 dashboard is built into the exe.
-
-Keep `libSkiaSharp.dll` from the same folder next to the exe. It is the native image library that reads photos and
-screenshots, and single-file publishing leaves it outside the exe. Copy those two files anywhere you like. The other
-files in that folder are not needed to run SlothBox.
 
 ## Run
 

@@ -9,6 +9,9 @@ export const typeFolders: Record<Schema['FileKind'], string> = {
 export const statusNames: Record<Schema['FileStatus'], string> = {
   filed: 'Filed', review: 'Needs review', duplicate: 'Duplicate', undone: 'Undone',
 }
+export const paymentNames: Record<Schema['PaymentMethod'], string> = {
+  upi: 'UPI', card: 'Card', cash: 'Cash', netbanking: 'Net banking', unknown: 'Unknown',
+}
 export function estimatedTime(value: number | string) {
   const minutes = Math.floor(Number(value))
   if (minutes < 1) return 'under a minute'

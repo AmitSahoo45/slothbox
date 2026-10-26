@@ -103,4 +103,19 @@ public sealed class ReceiptEndpointTests(PostgresFixture postgres)
         lines[1].ShouldBe($"2026-10-20,Jio,Bills and recharges,UPI,599.00,INR,{Path.GetFileName(jio.CurrentPath)}");
         lines[2].ShouldStartWith("2026-10-19,\"'=HYPERLINK(\"\"x\"\")\",Food,Cash,10.00,INR,");
     }
+
+    // The same words as the Receipts page, the review form and the file drawer.
+    [Fact]
+    public async Task The_csv_export_writes_net_banking_as_the_pages_do()
+    {
+        await using var h = await DashboardHarness.CreateAsync(postgres);
+        await h.FileAsync("power.jpg", Receipt("Bills and recharges", "City Power", new DateOnly(2026, 10, 12), 840m,
+            "INR", PaymentMethod.Netbanking));
+
+        using var response = await h.SendAsync(HttpMethod.Get, "/api/receipts/export.csv?month=2026-10");
+
+        var lines = (await response.Content.ReadAsStringAsync(Ct)).TrimStart('﻿')
+            .Split("\r\n", StringSplitOptions.RemoveEmptyEntries);
+        lines[1].ShouldStartWith("2026-10-12,City Power,Bills and recharges,Net banking,840.00,INR,");
+    }
 }

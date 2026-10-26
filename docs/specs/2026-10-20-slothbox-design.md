@@ -121,15 +121,15 @@ SlothBox is a local file butler for Windows 11.
 
 | Item | Value |
 |---|---|
-| Laptop | Lenovo LOQ 15IRX9 |
-| CPU | Intel Core i7-13650HX |
+| Computer | A Windows laptop |
+| CPU | Recent 64-bit Intel CPU |
 | RAM | 24 GB |
-| GPU | NVIDIA GeForce RTX 4060 Laptop, 8 GB VRAM |
-| Storage | 477 GB SSD |
+| GPU | NVIDIA laptop GPU with 8 GB VRAM |
+| Storage | SSD |
 | OS | Windows 11, x64 |
 | .NET | SDK 10.0.400; runtimes 10.0.11 (NETCore, AspNetCore, WindowsDesktop) |
 | Node.js | LTS, needed only to build the UI |
-| Containers | Docker Desktop. Existing containers belong to other projects (resume project `rag-*`, garden `ollama-1`, `breakmyquery-llama32`) and stay untouched. |
+| Containers | Docker Desktop. Containers that belong to other projects stay untouched. |
 | Phone | Android; Quick Share to Windows lands in Downloads |
 
 ### 2.2 Location rules
@@ -1496,7 +1496,7 @@ One file at a time.
 - **Several currencies:** totals are shown per currency; nothing is converted.
 - **Amounts:** right-aligned with tabular figures. Formatted with `Intl.NumberFormat('en-IN', { style: 'currency', currency })`, which gives Indian digit grouping (₹1,23,456.00) (A25).
 - **Rows:** clicking one opens the file drawer. Only filed receipts are listed, by receipt date, newest first: Needs review items, duplicates and undone files are left out.
-- **Export CSV:** exports the selected month as UTF-8 with columns Date, Vendor, Category, Paid by, Amount, Currency, File. A cell that starts with `=`, `+`, `-` or `@` gets a leading apostrophe, because vendors come from Gemma and a spreadsheet would run such a cell as a formula.
+- **Export CSV:** exports the selected month as UTF-8 with columns Date, Vendor, Category, Paid by, Amount, Currency, File. Paid by uses the same words as the pages (UPI, Card, Cash, Net banking) and is empty when unknown. A cell that starts with `=`, `+`, `-` or `@` gets a leading apostrophe, because vendors come from Gemma and a spreadsheet would run such a cell as a formula.
 - **Empty state:** "No receipts this month. Snap one with the phone page." with [Show phone QR code].
 
 #### 7.4.6 Folders (`/folders`)
@@ -2265,7 +2265,7 @@ This also enters the GitHub Copilot category, which includes automating a projec
 - **Development:** `dotnet run --project src/SlothBox.App`, plus `npm run dev` in `src/SlothBox.Web` for live UI changes.
 - **Release:**
   1. `npm run build` in `src/SlothBox.Web`.
-  2. `dotnet publish src/SlothBox.App -c Release -r win-x64 --self-contained -p:PublishSingleFile=true`. WinForms does not support trimming; leave it off.
+  2. `dotnet publish src/SlothBox.App -c Release -r win-x64 --self-contained -p:PublishSingleFile=true`. WinForms does not support trimming; leave it off. The App project sets `IncludeNativeLibrariesForSelfExtract`, so SkiaSharp's native library is inside the exe and the exe is the only file to ship; .NET unpacks that library under `%TEMP%\.net\SlothBox` at first start.
 - **Auto-start:** tick "Start at login" in the tray menu or on Settings.
 
 **Requirements for other users (README)**

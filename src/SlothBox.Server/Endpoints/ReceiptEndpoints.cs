@@ -82,7 +82,7 @@ internal static class ReceiptEndpoints
         PaymentMethod.Upi => "UPI",
         PaymentMethod.Card => "Card",
         PaymentMethod.Cash => "Cash",
-        PaymentMethod.Netbanking => "Netbanking",
+        PaymentMethod.Netbanking => "Net banking",
         _ => ""
     };
 }

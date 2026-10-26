@@ -5,6 +5,8 @@
     <UseWindowsForms>true</UseWindowsForms>
     <EnableWindowsTargeting>true</EnableWindowsTargeting>
     <AssemblyName>SlothBox</AssemblyName>
+    <!-- A single-file publish also carries SkiaSharp's native library; .NET unpacks it at first start. -->
+    <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../SlothBox.Core/SlothBox.Core.csproj" />

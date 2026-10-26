@@ -34,6 +34,13 @@ test('empty month offers the phone QR code', async () => {
   expect(await screen.findByRole('dialog')).toBeVisible()
 })
 
+test('net banking reads the same as in the review form and the file drawer', async () => {
+  server.use(http.get('*/api/receipts', () => HttpResponse.json({ ...responses.GetReceipts,
+    items: [{ ...responses.GetReceipts.items[0], paymentMethod: 'netbanking' }] })))
+  render(<App />)
+  expect(await screen.findByRole('cell', { name: 'Net banking' })).toBeVisible()
+})
+
 test('clicking an amount opens the receipt drawer', async () => {
   render(<App />)
   fireEvent.click(await screen.findByRole('cell', { name: '₹120.00' }))
