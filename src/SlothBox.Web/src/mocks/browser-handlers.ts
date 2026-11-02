@@ -1,6 +1,6 @@
 import { http, HttpResponse } from 'msw'
 import { handlers } from './handlers'
-import { responses, status } from './fixtures'
+import { offlineStatus, responses, status } from './fixtures'
 import type { MockEvent, Schema } from '../api/types'
 import { createBatch2Handlers } from './batch2-handlers'
 import { createBatch3Handlers } from './batch3-handlers'
@@ -12,7 +12,11 @@ export function createBrowserHandlers(options: { setupComplete?: boolean; pauseR
     ...structuredClone(status), setupComplete: options.setupComplete ?? true,
     paused: pauseReason !== null, pauseReason,
   }
-  if (pauseReason === 'gemma_offline') current.gemma = { ready: false, message: null }
+  // As the server answers while Ollama is not answering: no model list, so presence is unknown.
+  if (pauseReason === 'gemma_offline') {
+    const { gemma, visionModel, embeddingModel } = structuredClone(offlineStatus)
+    current = { ...current, gemma, visionModel, embeddingModel }
+  }
   const settingsState: SettingsState = { settings: structuredClone(responses.GetSettings), ignored: structuredClone(responses.GetIgnored) }
   const subscribers = new Set<ReadableStreamDefaultController<Uint8Array>>()
   const encoder = new TextEncoder()
@@ -28,7 +32,10 @@ export function createBrowserHandlers(options: { setupComplete?: boolean; pauseR
       return HttpResponse.json({ title: 'Missing X-SlothBox header', status: 403 }, { status: 403 })
     }
     // Resume also ends the synthetic Gemma outage.
-    current = { ...current, paused, pauseReason: paused ? 'user' : null, gemma: paused ? current.gemma : { ...status.gemma } }
+    const services = paused ? {} : structuredClone({
+      gemma: status.gemma, visionModel: status.visionModel, embeddingModel: status.embeddingModel,
+    })
+    current = { ...current, paused, pauseReason: paused ? 'user' : null, ...services }
     for (const subscriber of subscribers) {
       try { subscriber.enqueue(statusEvent()) } catch { subscribers.delete(subscriber) }
     }

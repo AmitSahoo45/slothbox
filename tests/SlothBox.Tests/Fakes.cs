@@ -175,8 +175,14 @@ internal sealed class FakeFiles : IFileRepository
 {
     public List<FileRecord> Records { get; } = [];
 
+    // Content and the path it was copied from, by a done copy-only filing.
+    public List<(string Sha256, string Path)> CopiedFrom { get; } = [];
+
     public Task<FileRecord?> FindFiledByHashAsync(string sha256, CancellationToken ct) =>
         Task.FromResult(Records.FirstOrDefault(record => record.Sha256 == sha256));
+
+    public Task<bool> WasCopiedFromAsync(string sha256, string originalPath, CancellationToken ct) =>
+        Task.FromResult(CopiedFrom.Contains((sha256, originalPath)));
 
     public Task<FileRecord?> GetAsync(Guid id, CancellationToken ct) => throw new NotSupportedException();
     public Task<FileRecord?> FindUnfinishedAsync(string sha256, string originalPath, CancellationToken ct) =>

@@ -103,8 +103,8 @@ function SetupSteps({ initial }: { initial: Schema['SetupDto'] }) {
           { name: 'EmbeddingGemma', ready: status.embeddingModel.present, model: status.embeddingModel, message: null },
           { name: 'Database', ready: status.database.ready, model: null, message: status.database.message }].map(check => <li key={check.name}>
           <span className={check.ready ? 'check-ready' : 'check-waiting'}>{check.ready ? '✓' : '!'}</span><div><strong>{check.name}</strong>{check.model && <span> ({check.model.name})</span>}
-            <p>{check.ready ? check.model?.loaded && check.model.onGpu ? 'Ready, on GPU' : 'Ready' : check.message || (check.model && !check.model.present ? 'Not installed' : 'Not ready')}</p>
-            {check.model && !check.model.present && <div className="copy-command"><code>docker exec slothbox-ollama ollama pull {check.model.name}</code><Button onClick={() => void copy(`docker exec slothbox-ollama ollama pull ${check.model!.name}`)}>Copy</Button></div>}
+            <p>{check.ready ? check.model?.loaded && check.model.onGpu ? 'Ready, on GPU' : 'Ready' : check.message || (check.model?.present === false ? 'Not installed' : 'Not ready')}</p>
+            {check.model?.present === false && <div className="copy-command"><code>docker exec slothbox-ollama ollama pull {check.model.name}</code><Button onClick={() => void copy(`docker exec slothbox-ollama ollama pull ${check.model!.name}`)}>Copy</Button></div>}
           </div></li>)}
       </ul>
       {checks.error && <p role="alert" className="query-error">{checks.error.message}</p>}

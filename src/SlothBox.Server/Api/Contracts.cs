@@ -3,7 +3,8 @@ using SlothBox.Core;
 namespace SlothBox.Server.Api;
 
 public sealed record ServiceStatusDto(bool Ready, string? Message);
-public sealed record ModelStatusDto(string Name, bool Present, bool Loaded, bool OnGpu);
+// Present is null while Ollama gives no model list: the model may well be pulled (spec 7.4.10).
+public sealed record ModelStatusDto(string Name, bool? Present, bool Loaded, bool OnGpu);
 // Why the worker is paused: by the user, or by itself (spec 9). Null while it runs.
 public enum PauseReason { User, DriveFull, GemmaOffline }
 public record StatusDto(ServiceStatusDto Gemma, ModelStatusDto VisionModel, ModelStatusDto EmbeddingModel,

@@ -31,15 +31,17 @@ public sealed class FolderJobsTests : IDisposable
 
     private static PipelineResult.Filed Filed() => new(TestRecords.File("abc"), "Bills", "Downloads", true);
 
-    // A copy-only original after its filing, or an undone file the gate skipped by its ignored hash.
+    // A copy-only original after its filing, an undone file the gate skipped by its ignored hash, or a copy-only
+    // original the gate skipped because its filing already stands (a job cut short after its copy).
     [Theory]
     [InlineData("filed")]
     [InlineData("ignored")]
+    [InlineData("already_filed")]
     public async Task A_file_that_stayed_where_it_was_unchanged_becomes_a_finished_path(string outcome)
     {
         var path = _temp.Write("photo.jpg", "photo");
         var seen = FileStamp.Of(path);
-        PipelineResult result = outcome == "filed" ? Filed() : new PipelineResult.Skipped("ignored");
+        PipelineResult result = outcome == "filed" ? Filed() : new PipelineResult.Skipped(outcome);
 
         await _jobs.RecordFinishedAsync(JobFor(path), result, seen, Ct);
 

@@ -15,6 +15,16 @@ export const status = {
   queue: { waiting: 2, processing: 1 },
   paused: false, pauseReason: null, setupComplete: true, averageSecondsPerFileToday: 8,
 } satisfies Schema['StatusDto']
+// GET /status as the server answers it with Docker not started. Ollama gives no model list, so whether the models
+// are pulled is unknown (null), not false.
+export const offlineStatus = {
+  gemma: { ready: false, message: 'Ollama is not answering at http://127.0.0.1:11436.' },
+  visionModel: { name: 'gemma4:e4b', present: null, loaded: false, onGpu: false },
+  embeddingModel: { name: 'embeddinggemma', present: null, loaded: false, onGpu: false },
+  database: { ready: false, message: 'The database is not answering.' },
+  queue: { waiting: 0, processing: 0 },
+  paused: false, pauseReason: null, setupComplete: true, averageSecondsPerFileToday: null,
+} satisfies Schema['StatusDto']
 export const activity = {
   fileId, at, status: 'filed', type: 'receipt', category: 'Food and drink',
   title: 'Sample lunch', newName: '2026-10-20_Sample-Cafe_120INR.jpg',

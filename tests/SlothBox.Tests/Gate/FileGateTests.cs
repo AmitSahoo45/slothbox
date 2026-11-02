@@ -8,6 +8,9 @@ public sealed class FileGateTests : IDisposable
     // SHA-256 of the UTF-8 text "hello".
     private const string HelloSha256 = "2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824";
 
+    // SHA-256 of no bytes.
+    private const string EmptySha256 = "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855";
+
     private readonly TempFolder _temp = new();
     private readonly FakeWatchedFolders _folders = new();
     private readonly FakeIgnoredHashes _ignored = new();
@@ -109,6 +112,18 @@ public sealed class FileGateTests : IDisposable
         (await Check(OldFile("receipt (1).jpg"))).ShouldBe(new GateResult.Duplicate(filed.Id, HelloSha256));
     }
 
+    // A copy-only original stays in its folder after its filing; seen there again (its job cut short), it is the
+    // same file, not a duplicate.
+    [Fact]
+    public async Task A_file_already_copied_from_this_path_is_skipped()
+    {
+        var path = OldFile("PXL_0001.jpg");
+        _files.Records.Add(TestRecords.File(HelloSha256));
+        _files.CopiedFrom.Add((HelloSha256, path));
+
+        (await Check(path)).ShouldBe(new GateResult.Skip(GateSkipReason.AlreadyFiled));
+    }
+
     [Fact]
     public async Task A_file_open_in_another_program_is_not_ready_until_it_is_closed()
     {
@@ -137,6 +152,35 @@ public sealed class FileGateTests : IDisposable
 
         (await Check(path)).ShouldBe(new GateResult.NotReady());
         _waits.ShouldBe([TimeSpan.FromSeconds(3)]);
+    }
+
+    // Firefox writes a download to <name>.part and leaves an empty file under the final name until it is done, however
+    // long that takes; then the finished .part replaces it.
+    [Fact]
+    public async Task A_file_with_a_part_file_beside_it_is_not_ready_until_the_download_finishes()
+    {
+        var placeholder = _temp.Write("setup.exe", "");
+        File.SetLastWriteTimeUtc(placeholder, DateTime.UtcNow.AddMinutes(-30));
+        var part = OldFile("setup.exe.part", "hello");
+
+        (await Check(placeholder)).ShouldBe(new GateResult.NotReady());
+
+        File.Move(part, placeholder, overwrite: true);
+        (await Check(placeholder)).ShouldBe(new GateResult.Ready(HelloSha256));
+    }
+
+    // Programs often create a file empty and write it afterwards: within the lock-retry window it waits like a
+    // locked file. One still empty after that is a real empty file.
+    [Fact]
+    public async Task An_empty_file_waits_out_the_lock_retry_window_before_it_is_ready()
+    {
+        var path = _temp.Write("notes.txt", "");
+        File.SetLastWriteTimeUtc(path, DateTime.UtcNow.AddMinutes(-9));
+
+        (await Check(path)).ShouldBe(new GateResult.NotReady());
+
+        File.SetLastWriteTimeUtc(path, DateTime.UtcNow.AddMinutes(-11));
+        (await Check(path)).ShouldBe(new GateResult.Ready(EmptySha256));
     }
 
     [Fact]

@@ -57,6 +57,23 @@ public sealed class JobQueueTests(PostgresFixture postgres)
         (await JobsAsync(db)).ShouldHaveSingleItem().Path.ShouldBe(Photo);
     }
 
+    // A worker retry or a sweep can still carry the id of a folder removed since; jobs.watched_folder_id is a
+    // foreign key, so the insert must not fail for it.
+    [Fact]
+    public async Task A_path_from_a_folder_removed_since_is_not_queued()
+    {
+        await using var db = await postgres.CreateDatabaseAsync(Ct);
+        var folderId = await DataSeed.FolderAsync(db);
+        await new WatchedFolderRepository(db).RemoveAsync(folderId, Ct);
+        var queue = new JobQueue(db);
+        var stamp = new FileStamp(5, new DateTime(2026, 10, 24, 12, 0, 0, DateTimeKind.Utc));
+
+        await queue.EnqueueAsync(Seen(Bill, folderId: folderId), Ct);
+        (await queue.EnqueueUnlessFinishedAsync(Seen(Photo, folderId: folderId), stamp, Ct)).ShouldBeFalse();
+
+        (await JobsAsync(db)).ShouldBeEmpty();
+    }
+
     [Fact]
     public async Task Counts_report_the_waiting_and_processing_jobs()
     {

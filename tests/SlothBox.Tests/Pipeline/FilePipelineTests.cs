@@ -182,6 +182,43 @@ public sealed class FilePipelineTests(PostgresFixture postgres)
         (await h.Moves.ActionsAsync(filed.File.Id)).ShouldHaveSingleItem().Kind.ShouldBe(ActionKind.Copy);
     }
 
+    // A job cut short after its copy (SlothBox quit while embedding, or was killed) runs again at the next start. The
+    // original is still in its copy-only folder: its own filed copy must not make it a duplicate.
+    [Fact]
+    public async Task A_copy_only_file_whose_job_runs_again_after_its_filing_is_passed_over()
+    {
+        await using var h = await PipelineHarness.CreateAsync(postgres);
+        var folderId = await h.AddFolderAsync(FolderMode.Copy);
+        var photo = Photo(h.WatchedPath("PXL_0001.jpg"));
+        h.Analyzer.Answer = _ => new AnalysisResult.Success(JioReceipt);
+        (await h.Pipeline().RunAsync(PipelineHarness.JobFor(photo, folderId: folderId), Ct))
+            .ShouldBeOfType<PipelineResult.Filed>();
+
+        var again = await h.Pipeline().RunAsync(PipelineHarness.JobFor(photo, folderId: folderId), Ct);
+
+        again.ShouldBe(new PipelineResult.Skipped(GateSkipReason.AlreadyFiled));
+        File.Exists(photo).ShouldBeTrue();
+        (await h.CountFilesAsync()).ShouldBe(1);
+        h.Analyzer.Requests.Count.ShouldBe(1);
+    }
+
+    // In a Move folder the original left with its filing, so the same content at the same path is a new copy.
+    [Fact]
+    public async Task The_same_content_arriving_again_where_a_moved_file_was_is_a_duplicate()
+    {
+        await using var h = await PipelineHarness.CreateAsync(postgres);
+        var folderId = await h.AddFolderAsync();
+        var path = Photo(h.WatchedPath("IMG_2041.jpg"));
+        h.Analyzer.Answer = _ => new AnalysisResult.Success(JioReceipt);
+        var original = (await h.Pipeline().RunAsync(PipelineHarness.JobFor(path, folderId: folderId), Ct))
+            .ShouldBeOfType<PipelineResult.Filed>();
+        File.Copy(original.File.CurrentPath, path);
+
+        var again = await h.Pipeline().RunAsync(PipelineHarness.JobFor(path, folderId: folderId), Ct);
+
+        again.ShouldBeOfType<PipelineResult.Filed>().File.Status.ShouldBe(FileStatus.Duplicate);
+    }
+
     [Theory]
     [InlineData("statement.pdf.crdownload", GateSkipReason.Temporary)]
     [InlineData("vanished.jpg", GateSkipReason.Missing)]

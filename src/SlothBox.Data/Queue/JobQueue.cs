@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 using SlothBox.Core;
 using SlothBox.Core.Folders;
 
@@ -11,11 +12,11 @@ public sealed class JobQueue(IDbContextFactory<SlothBoxDbContext> contexts) : IJ
         await using var db = await contexts.CreateDbContextAsync(ct);
         var now = DateTimeOffset.UtcNow;
         // ix_jobs_path_active allows one queued or processing job per path; a second enqueue does nothing.
-        await db.Database.ExecuteSqlAsync($"""
+        await InsertAsync(db.Database.ExecuteSqlAsync($"""
             INSERT INTO jobs (path, origin, watched_folder_id, status, attempts, created_at, updated_at)
             VALUES ({file.Path}, {DbValue.Of(file.Origin)}, {file.WatchedFolderId}, 'queued', 0, {now}, {now})
             ON CONFLICT (path) WHERE status IN ('queued','processing') DO NOTHING
-            """, ct);
+            """, ct));
     }
 
     // One statement: no job while finished_paths has the path with this stamp, or while it has an active job.
@@ -24,14 +25,28 @@ public sealed class JobQueue(IDbContextFactory<SlothBoxDbContext> contexts) : IJ
         await using var db = await contexts.CreateDbContextAsync(ct);
         var now = DateTimeOffset.UtcNow;
         var lastWrite = new DateTimeOffset(stamp.LastWriteUtc, TimeSpan.Zero);
-        var added = await db.Database.ExecuteSqlAsync($"""
+        var added = await InsertAsync(db.Database.ExecuteSqlAsync($"""
             INSERT INTO jobs (path, origin, watched_folder_id, status, attempts, created_at, updated_at)
             SELECT {file.Path}, {DbValue.Of(file.Origin)}, {file.WatchedFolderId}::integer, 'queued', 0, {now}, {now}
             WHERE NOT EXISTS (SELECT 1 FROM finished_paths WHERE path = {file.Path}::citext
                 AND size_bytes = {stamp.Size} AND last_write_at = {lastWrite})
             ON CONFLICT (path) WHERE status IN ('queued','processing') DO NOTHING
-            """, ct);
+            """, ct));
         return added > 0;
+    }
+
+    // A worker retry or a sweep can still carry the id of a folder removed since: the insert fails the foreign key
+    // on watched_folder_id, and there is nothing to queue for that folder.
+    private static async Task<int> InsertAsync(Task<int> insert)
+    {
+        try
+        {
+            return await insert;
+        }
+        catch (PostgresException e) when (e.SqlState == PostgresErrorCodes.ForeignKeyViolation)
+        {
+            return 0;
+        }
     }
 
     public async Task<Job?> ClaimNextAsync(CancellationToken ct)

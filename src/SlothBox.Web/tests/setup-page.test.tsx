@@ -2,7 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { beforeEach, expect, test } from 'vitest'
 import { http, HttpResponse } from 'msw'
 import { App } from '../src/App'
-import { responses } from '../src/mocks/fixtures'
+import { offlineStatus, responses } from '../src/mocks/fixtures'
 import { server } from '../src/mocks/server'
 import type { Schema } from '../src/api/types'
 import { setupUi } from './ui-helpers'
@@ -56,6 +56,17 @@ test('checks repeat every 10 seconds and Finish anyway sends paused completion i
   fireEvent.click(screen.getByRole('button', { name: 'Finish anyway' }))
   await waitFor(() => expect(body?.finishAnyway).toBe(true))
 }, 25000)
+
+// Ollama not answering says nothing about the models: their checks wait for it and offer no pull command.
+test('while Ollama is not answering the model checks offer no pull command', async () => {
+  server.use(http.get('*/api/setup', () => HttpResponse.json({ ...responses.GetSetup, complete: false,
+    status: { ...offlineStatus, database: responses.GetStatus.database } })))
+  render(<App />)
+  expect(await checks()).toBeDisabled()
+  expect(screen.getByText('Ollama is not answering at http://127.0.0.1:11436.')).toBeVisible()
+  expect(screen.queryByText('Not installed')).not.toBeInTheDocument()
+  expect(screen.queryByText(/ollama pull/)).not.toBeInTheDocument()
+})
 
 test('completed setup redirects to Today without exposing an editable output root', async () => {
   server.use(http.get('*/api/setup', () => HttpResponse.json(responses.GetSetup)))

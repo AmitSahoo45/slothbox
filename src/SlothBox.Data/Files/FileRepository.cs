@@ -26,6 +26,14 @@ public sealed class FileRepository(IDbContextFactory<SlothBoxDbContext> contexts
         return file is null ? null : ToRecord(file);
     }
 
+    public async Task<bool> WasCopiedFromAsync(string sha256, string originalPath, CancellationToken ct)
+    {
+        await using var db = await contexts.CreateDbContextAsync(ct);
+        return await db.Files.AnyAsync(f => f.Sha256 == sha256 && f.OriginalPath == originalPath &&
+            f.Status != FileStatus.Undone && db.Actions.Any(a =>
+                a.FileId == f.Id && a.Kind == ActionKind.Copy && a.Status == ActionStatus.Done), ct);
+    }
+
     public async Task<FileRecord?> FindUnfinishedAsync(string sha256, string originalPath, CancellationToken ct)
     {
         await using var db = await contexts.CreateDbContextAsync(ct);

@@ -1,4 +1,5 @@
 using System.Net;
+using System.Text.Json.Nodes;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
@@ -82,16 +83,29 @@ public sealed class StatusEndpointTests : IDisposable
             new ServiceStatusDto(true, null), new QueueChangedEvent(4, 1), false, true, null, null));
     }
 
+    // While Ollama is down the models are neither present nor missing: the page reads "present": null.
     [Fact]
-    public async Task Status_reports_Ollama_down_and_a_missing_model()
+    public async Task Status_reports_Ollama_down_with_the_models_unknown_and_a_missing_model_as_missing()
     {
         _gemma.State = new GemmaState(false, "Ollama is not answering at http://127.0.0.1:11436.",
-            new ModelState("gemma4:e4b", false, false, false), new ModelState("embeddinggemma", false, false, false));
+            new ModelState("gemma4:e4b", null, false, false), new ModelState("embeddinggemma", null, false, false));
 
+        using (var client = Client())
+        {
+            var json = JsonNode.Parse(await client.GetStringAsync("/api/status", Ct))!;
+            json["gemma"]!.ToJsonString().ShouldBe(
+                """{"ready":false,"message":"Ollama is not answering at http://127.0.0.1:11436."}""");
+            json["visionModel"]!.AsObject().ContainsKey("present").ShouldBeTrue();
+            (json["visionModel"]!["present"], json["embeddingModel"]!["present"]).ShouldBe((null, null));
+        }
+
+        _gemma.State = FixedGemma.Ready() with
+        {
+            Embedding = new ModelState("embeddinggemma", false, false, false)
+        };
         var status = await StatusAsync();
-
-        (status.Gemma, status.VisionModel.Present, status.EmbeddingModel.Present).ShouldBe((
-            new ServiceStatusDto(false, "Ollama is not answering at http://127.0.0.1:11436."), false, false));
+        (status.Gemma.Ready, status.VisionModel.Present, status.EmbeddingModel.Present)
+            .ShouldBe((true, (bool?)true, (bool?)false));
     }
 
     [Fact]

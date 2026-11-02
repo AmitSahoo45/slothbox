@@ -2793,7 +2793,10 @@
             "type": "string"
           },
           "present": {
-            "type": "boolean"
+            "type": [
+              "null",
+              "boolean"
+            ]
           },
           "loaded": {
             "type": "boolean"
@@ -3357,7 +3360,10 @@
                 "type": "string"
               },
               "present": {
-                "type": "boolean"
+                "type": [
+                  "null",
+                  "boolean"
+                ]
               },
               "loaded": {
                 "type": "boolean"
@@ -3380,7 +3386,10 @@
                 "type": "string"
               },
               "present": {
-                "type": "boolean"
+                "type": [
+                  "null",
+                  "boolean"
+                ]
               },
               "loaded": {
                 "type": "boolean"

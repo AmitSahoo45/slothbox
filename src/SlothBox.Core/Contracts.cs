@@ -136,6 +136,9 @@ public interface IFileRepository
 {
     Task<FileRecord?> GetAsync(Guid id, CancellationToken ct);
     Task<FileRecord?> FindFiledByHashAsync(string sha256, CancellationToken ct);
+    // Whether a standing filing (filed, in review or a duplicate) copied this content from this path: a copy-only
+    // original is still there after its filing, so seeing it again does not make it a duplicate (spec 5.1 step 2).
+    Task<bool> WasCopiedFromAsync(string sha256, string originalPath, CancellationToken ct);
     // The row of an earlier first filing of this content from this path that never finished (no done action);
     // a retry reuses it instead of adding another (spec 6.2).
     Task<FileRecord?> FindUnfinishedAsync(string sha256, string originalPath, CancellationToken ct);

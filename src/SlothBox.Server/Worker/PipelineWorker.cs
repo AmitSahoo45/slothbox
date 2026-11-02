@@ -57,7 +57,7 @@ public sealed class PipelineWorker(
                 {
                     break;
                 }
-                catch (NpgsqlException e)
+                catch (NpgsqlException e) when (IsOutage(e))
                 {
                     // Postgres is down: nothing moves until it is back (spec 9).
                     log.LogWarning("The database is not answering: {Error}", e.Message);
@@ -146,30 +146,36 @@ public sealed class PipelineWorker(
         var job = await jobs.ClaimNextAsync(ct);
         if (job is null)
             return null;
+        // Spec 4.3 "Shutdown": once the worker is told to stop, the claimed job still has ShutdownGrace to finish and
+        // record its outcome. Only then is it cancelled, and the next start queues it again.
+        using var grace = new CancellationTokenSource();
+        using var stopping = ct.Register(() => grace.CancelAfter(_timing.ShutdownGrace));
+        var jobCt = grace.Token;
         // How the file looked before the job: if it is still like that afterwards, it stayed put (spec 4.5).
         var seen = FileStamp.Of(job.File.Path);
         PipelineResult result;
         var watch = Stopwatch.StartNew();
         try
         {
-            result = await pipeline.RunAsync(job, ct);
+            result = await pipeline.RunAsync(job, jobCt);
             if (result is PipelineResult.Filed)
                 stats.Record(watch.Elapsed);
         }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested)
+        catch (OperationCanceledException) when (jobCt.IsCancellationRequested)
         {
             throw;
         }
-        catch (Exception e) when (e is not NpgsqlException)
+        catch (Exception e) when (!IsOutage(e))
         {
-            // Anything else, a stray cancellation included, is this job's failure, not the worker's.
+            // Anything else, a stray cancellation or an error Postgres answers with included, is this job's failure,
+            // not the worker's.
             log.LogError(e, "Job {JobId} for {Path} failed.", job.Id, job.File.Path);
             result = new PipelineResult.Failed(Guid.Empty, e.Message, null);
         }
         // While the job still holds its path in the queue (spec 4.5).
         if (folderJobs is not null)
-            await folderJobs.RecordFinishedAsync(job, result, seen, ct);
-        if (await FinishAsync(job, result, ct))
+            await folderJobs.RecordFinishedAsync(job, result, seen, jobCt);
+        if (await FinishAsync(job, result, jobCt))
             folderJobs?.JobOver(job);
         return result;
     }
@@ -238,15 +244,21 @@ public sealed class PipelineWorker(
         return false;
     }
 
+    // A retry is dropped before it is queued: one that cannot be queued is left for the next sweep, instead of failing
+    // again on every loop and holding up the queue.
     private async Task EnqueueDueRetriesAsync(CancellationToken ct)
     {
         var now = DateTimeOffset.UtcNow;
         foreach (var retry in _retries.Where(r => r.Due <= now).ToList())
         {
-            await jobs.EnqueueAsync(retry.File with { DetectedAt = now }, ct);
             _retries.Remove(retry);
+            await jobs.EnqueueAsync(retry.File with { DetectedAt = now }, ct);
         }
     }
+
+    // Postgres is down or cannot take the statement now. An error it answers with that a retry cannot fix (a
+    // constraint, a bad value) is not an outage: it belongs to whatever sent the statement.
+    private static bool IsOutage(Exception e) => e is NpgsqlException and not PostgresException { IsTransient: false };
 
     private void PublishWorkerChanged() =>
         events.Publish(new ServerEvent("worker.changed", new WorkerChanged(state.Paused, state.Reason)));

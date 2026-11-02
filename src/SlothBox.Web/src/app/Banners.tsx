@@ -30,7 +30,8 @@ export function Banners({ status, error, checking, disconnected, busy, onCheck, 
         Gemma is offline. {waiting} {waiting === 1 ? 'file is' : 'files are'} waiting. Start Docker Desktop and SlothBox will carry on by itself.
       </Banner>}
       {[{ model: status.visionModel, label: 'Gemma' }, { model: status.embeddingModel, label: 'EmbeddingGemma' }]
-        .filter(({ model }) => !model.present).map(({ model, label }) => {
+        // Only a model Ollama lists as not pulled: while Ollama gives no list, presence is unknown (null).
+        .filter(({ model }) => model.present === false).map(({ model, label }) => {
           const command = `docker exec slothbox-ollama ollama pull ${model.name}`
           return <Banner key={label} action={<Button onClick={() => void copy(command)}>Copy command</Button>}>
             <p>{label} isn't installed.</p><code>{command}</code>

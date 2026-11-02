@@ -889,7 +889,7 @@ export interface components {
         };
         ModelStatusDto: {
             name: string;
-            present: boolean;
+            present: null | boolean;
             loaded: boolean;
             onGpu: boolean;
         };
@@ -1014,13 +1014,13 @@ export interface components {
             };
             visionModel: {
                 name: string;
-                present: boolean;
+                present: null | boolean;
                 loaded: boolean;
                 onGpu: boolean;
             };
             embeddingModel: {
                 name: string;
-                present: boolean;
+                present: null | boolean;
                 loaded: boolean;
                 onGpu: boolean;
             };

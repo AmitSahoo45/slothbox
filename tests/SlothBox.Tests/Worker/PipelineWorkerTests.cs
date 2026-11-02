@@ -21,7 +21,10 @@ public sealed class PipelineWorkerTests
     private sealed class WorkerHarness : IAsyncDisposable
     {
         private static readonly WorkerTiming Fast = new(TimeSpan.FromMilliseconds(10), TimeSpan.FromMilliseconds(50),
-            TimeSpan.FromMilliseconds(20), TimeSpan.FromMilliseconds(20), TimeSpan.FromMilliseconds(10));
+            TimeSpan.FromMilliseconds(20), TimeSpan.FromMilliseconds(20), TimeSpan.FromMilliseconds(10))
+        {
+            ShutdownGrace = TimeSpan.FromMilliseconds(300)
+        };
 
         private readonly ServerEvents.Subscription _subscription;
         private readonly Task _collector;
@@ -76,6 +79,9 @@ public sealed class PipelineWorkerTests
         }
 
         public FakeJob Job(int index) => Queue.Snapshot()[index];
+
+        // What the host does on Exit (spec 4.3 "Shutdown").
+        public Task StopAsync() => _worker!.StopAsync(CancellationToken.None);
 
         public async ValueTask DisposeAsync()
         {
@@ -482,6 +488,55 @@ public sealed class PipelineWorkerTests
         h.Pipeline.RunCount.ShouldBe(2);
     }
 
+    // Spec 4.3 "Shutdown": the job running at Exit may finish, and its outcome is kept. Cancelled at once, a job cut
+    // short after its copy would run again at the next start.
+    [Fact]
+    public async Task On_stop_the_running_job_may_finish_and_its_outcome_is_kept()
+    {
+        await using var h = new WorkerHarness();
+        h.Queue.Add(Photo);
+        var started = new TaskCompletionSource();
+        var release = new TaskCompletionSource();
+        h.Pipeline.Answer = _ =>
+        {
+            started.TrySetResult();
+            release.Task.Wait(TimeSpan.FromSeconds(5));
+            h.Pipeline.LastToken.ThrowIfCancellationRequested();
+            return Filed();
+        };
+
+        await h.StartAsync();
+        await started.Task.WaitAsync(TimeSpan.FromSeconds(5), Ct);
+        var stopping = h.StopAsync();
+        release.SetResult();
+        await stopping.WaitAsync(TimeSpan.FromSeconds(5), Ct);
+
+        h.Job(0).Status.ShouldBe(JobStatus.Done);
+    }
+
+    // The grace has an end: a job still running then is cancelled and stays processing, so the next start queues it
+    // again.
+    [Fact]
+    public async Task On_stop_a_job_still_running_after_the_grace_is_cancelled()
+    {
+        await using var h = new WorkerHarness();
+        h.Queue.Add(Photo);
+        var started = new TaskCompletionSource();
+        h.Pipeline.Answer = _ =>
+        {
+            started.TrySetResult();
+            h.Pipeline.LastToken.WaitHandle.WaitOne(TimeSpan.FromSeconds(5));
+            h.Pipeline.LastToken.ThrowIfCancellationRequested();
+            return Filed();
+        };
+
+        await h.StartAsync();
+        await started.Task.WaitAsync(TimeSpan.FromSeconds(5), Ct);
+        await h.StopAsync().WaitAsync(TimeSpan.FromSeconds(5), Ct);
+
+        h.Job(0).Status.ShouldBe(JobStatus.Processing);
+    }
+
     [Fact]
     public async Task A_user_pause_holds_the_queue_and_resume_lets_it_run()
     {
@@ -579,6 +634,44 @@ public sealed class PipelineWorkerTests
 
         await UntilAsync(() => h.Job(0).Status == JobStatus.Done, "the job is done once the database is back");
         h.SequenceSnapshot().Count(step => step == "requeue").ShouldBe(2);
+    }
+
+    // An error Postgres answers with is the job's, not an outage: requeued, the job would fail the same way forever
+    // and hold every job behind it.
+    [Fact]
+    public async Task A_database_error_in_one_job_fails_that_job_and_the_worker_carries_on()
+    {
+        await using var h = new WorkerHarness();
+        h.Queue.Add(Photo);
+        h.Queue.Add(Second);
+        h.Pipeline.Answer = job => job.File.Path == Photo
+            ? throw new PostgresException("new row violates check constraint", "ERROR", "ERROR",
+                PostgresErrorCodes.CheckViolation)
+            : Filed();
+
+        await h.StartAsync();
+
+        await UntilAsync(() => h.Job(1).Status == JobStatus.Done, "the second job is done");
+        h.Job(0).Status.ShouldBe(JobStatus.Failed);
+        h.Pipeline.Runs.Count(run => run.File.Path == Photo).ShouldBe(1);
+    }
+
+    // Postgres shutting down answers with an error too, but that one passes: the job waits for the database.
+    [Fact]
+    public async Task A_database_shutting_down_mid_job_is_an_outage_and_the_job_runs_again()
+    {
+        await using var h = new WorkerHarness();
+        h.Queue.Add(Photo);
+        var attempts = 0;
+        h.Pipeline.Answer = _ => Interlocked.Increment(ref attempts) == 1
+            ? throw new PostgresException("terminating connection due to administrator command", "FATAL", "FATAL",
+                PostgresErrorCodes.AdminShutdown)
+            : Filed();
+
+        await h.StartAsync();
+
+        await UntilAsync(() => h.Job(0).Status == JobStatus.Done, "the job is done once the database is back");
+        attempts.ShouldBe(2);
     }
 
     [Fact]

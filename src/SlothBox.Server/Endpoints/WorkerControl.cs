@@ -16,7 +16,7 @@ public sealed class WorkerControl(WorkerState worker, StatusService status)
     {
         worker.Resume();
         var current = await status.GetAsync(ct);
-        if (current.Gemma.Ready && current.VisionModel.Present && current.EmbeddingModel.Present)
+        if (current.Gemma.Ready && current.VisionModel.Present == true && current.EmbeddingModel.Present == true)
             return current;
         // Without Gemma and both models every waiting file would go to Needs review (spec 9): stay paused.
         worker.Pause(PauseReason.GemmaOffline);

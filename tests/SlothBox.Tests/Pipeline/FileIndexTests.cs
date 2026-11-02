@@ -76,6 +76,8 @@ public sealed class FileIndexTests
         public Task<FileRecord?> GetAsync(Guid id, CancellationToken ct) => throw new NotSupportedException();
         public Task<FileRecord?> FindFiledByHashAsync(string sha256, CancellationToken ct) =>
             throw new NotSupportedException();
+        public Task<bool> WasCopiedFromAsync(string sha256, string originalPath, CancellationToken ct) =>
+            throw new NotSupportedException();
         public Task<FileRecord?> FindUnfinishedAsync(string sha256, string originalPath, CancellationToken ct) =>
             throw new NotSupportedException();
         public Task SaveAsync(FileRecord file, CancellationToken ct) => throw new NotSupportedException();

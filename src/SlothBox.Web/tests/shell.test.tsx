@@ -3,7 +3,7 @@ import { beforeAll, beforeEach, afterEach, afterAll, expect, test, vi } from 'vi
 import { http, HttpResponse } from 'msw'
 import { App } from '../src/App'
 import { server } from '../src/mocks/server'
-import { status } from '../src/mocks/fixtures'
+import { offlineStatus, status } from '../src/mocks/fixtures'
 import type { Schema } from '../src/api/types'
 import { readFileSync } from 'node:fs'
 const shellCss = readFileSync('src/styles/base.css', 'utf8')
@@ -51,6 +51,25 @@ test('a status.changed event immediately shows the Gemma offline banner', async 
   }))
   expect(await screen.findByText('Gemma is offline. 4 files are waiting. Start Docker Desktop and SlothBox will carry on by itself.')).toBeVisible()
   expect(screen.getByRole('button', { name: 'Check again' })).toBeEnabled()
+})
+// Docker not started, the most common outage: Ollama gives no model list, so no banner may call a model missing and
+// offer a 7 GB pull for it.
+test('with Docker not started only the offline banners show, not missing models', async () => {
+  server.use(http.get('*/api/status', () => HttpResponse.json(offlineStatus)))
+  render(<App />)
+  expect(await screen.findByText('Gemma is offline. 0 files are waiting. Start Docker Desktop and SlothBox will carry on by itself.')).toBeVisible()
+  expect(screen.getByText("The database is offline. Nothing will move until it's back.")).toBeVisible()
+  expect(screen.queryByText(/isn't installed/)).not.toBeInTheDocument()
+  expect(screen.queryByText(/ollama pull/)).not.toBeInTheDocument()
+})
+test('a model Ollama reports as not pulled shows its pull command', async () => {
+  server.use(http.get('*/api/status', () => HttpResponse.json({
+    ...status, embeddingModel: { ...status.embeddingModel, present: false, loaded: false },
+  })))
+  render(<App />)
+  expect(await screen.findByText("EmbeddingGemma isn't installed.")).toBeVisible()
+  expect(screen.getByText('docker exec slothbox-ollama ollama pull embeddinggemma')).toBeVisible()
+  expect(screen.queryByText("Gemma isn't installed.")).not.toBeInTheDocument()
 })
 test('queue events update the waiting count without losing service status', async () => {
   render(<App />)

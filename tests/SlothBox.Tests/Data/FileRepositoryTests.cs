@@ -105,7 +105,36 @@ public sealed class FileRepositoryTests(PostgresFixture postgres)
         (await files.FindFiledByHashAsync("duplicate", Ct)).ShouldBeNull();
     }
 
-    private static async Task<Guid> AddAsync(TestDatabase db, string sha256, FileStatus status, bool filingDone)
+    // Spec 5.1 step 2: a copy-only original seen again after its filing (its job cut short) is not a duplicate. A
+    // moved original left its path, and an undone filing no longer stands.
+    [Fact]
+    public async Task Content_copied_from_a_path_is_found_while_that_filing_stands()
+    {
+        await using var db = await postgres.CreateDatabaseAsync(Ct);
+        var files = new FileRepository(db);
+        foreach (var (sha256, status, done, kind) in new[]
+                 {
+                     ("copied", FileStatus.Filed, true, ActionKind.Copy),
+                     ("reviewed", FileStatus.Review, true, ActionKind.Copy),
+                     ("duplicate", FileStatus.Duplicate, true, ActionKind.Copy),
+                     ("moved", FileStatus.Filed, true, ActionKind.Move),
+                     ("unfinished", FileStatus.Filed, false, ActionKind.Copy),
+                     ("undone", FileStatus.Undone, true, ActionKind.Copy)
+                 })
+            await AddAsync(db, sha256, status, done, kind);
+
+        string Source(string name) => $@"D:\slothbox-test\watched\{name}.pdf";
+        (await files.WasCopiedFromAsync("copied", Source("copied"), Ct)).ShouldBeTrue();
+        (await files.WasCopiedFromAsync("reviewed", Source("reviewed"), Ct)).ShouldBeTrue();
+        (await files.WasCopiedFromAsync("duplicate", Source("duplicate"), Ct)).ShouldBeTrue();
+        (await files.WasCopiedFromAsync("copied", @"D:\slothbox-test\elsewhere\copied.pdf", Ct)).ShouldBeFalse();
+        (await files.WasCopiedFromAsync("moved", Source("moved"), Ct)).ShouldBeFalse();
+        (await files.WasCopiedFromAsync("unfinished", Source("unfinished"), Ct)).ShouldBeFalse();
+        (await files.WasCopiedFromAsync("undone", Source("undone"), Ct)).ShouldBeFalse();
+    }
+
+    private static async Task<Guid> AddAsync(TestDatabase db, string sha256, FileStatus status, bool filingDone,
+        ActionKind kind = ActionKind.Move)
     {
         await using var context = db.CreateDbContext();
         var now = DateTimeOffset.UtcNow;
@@ -128,7 +157,7 @@ public sealed class FileRepositoryTests(PostgresFixture postgres)
         context.Actions.Add(new StoredAction
         {
             FileId = file.Id,
-            Kind = ActionKind.Move,
+            Kind = kind,
             FromPath = file.OriginalPath,
             ToPath = file.CurrentPath,
             Sha256 = sha256,

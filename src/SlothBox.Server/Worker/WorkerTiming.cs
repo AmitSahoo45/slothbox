@@ -5,6 +5,9 @@ namespace SlothBox.Server.Worker;
 public sealed record WorkerTiming(TimeSpan IdlePoll, TimeSpan OfflineRetry, TimeSpan DatabaseRetry,
     TimeSpan LockRetry, TimeSpan SetupPoll)
 {
+    // Spec 4.3 "Shutdown": how long the running job may still take once SlothBox is told to stop.
+    public TimeSpan ShutdownGrace { get; init; } = TimeSpan.FromSeconds(30);
+
     public static readonly WorkerTiming Default = new(TimeSpan.FromSeconds(1), TimeSpan.FromSeconds(30),
         TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(10));
 }

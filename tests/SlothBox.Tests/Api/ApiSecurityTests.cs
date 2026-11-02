@@ -61,6 +61,57 @@ public sealed class ApiSecurityTests(ServerFactory factory) : IClassFixture<Serv
         response.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
     }
 
+    // Framed, the dashboard's own requests are same-origin and pass the Host and header checks, so another page could
+    // disguise its buttons and have Undo since or Tidy them now clicked (clickjacking). No page may frame it.
+    [Theory]
+    [InlineData("/api/status")]
+    [InlineData("/openapi/v1.json")]
+    [InlineData("/")]
+    [InlineData("/review")]
+    [InlineData("/api/files/not-a-file-id/thumb")]
+    public async Task No_page_may_frame_the_dashboard(string path)
+    {
+        using var client = factory.DashboardClient();
+        using var response = await client.GetAsync(path, TestContext.Current.CancellationToken);
+        response.Headers.GetValues("X-Frame-Options").ShouldBe(["DENY"]);
+        response.Headers.GetValues("Content-Security-Policy").ShouldBe(["frame-ancestors 'none'"]);
+    }
+
+    // What a browser marks as sent by another site's page (an image, a script, a fetch, a frame, a link or a pop-up),
+    // or by a page on another port of this laptop. The dashboard opens from the tray, a bookmark or the address bar.
+    [Theory]
+    [InlineData("GET", "cross-site", "no-cors", "image")]
+    [InlineData("GET", "cross-site", "navigate", "iframe")]
+    [InlineData("GET", "cross-site", "navigate", "document")]
+    [InlineData("POST", "cross-site", "cors", "empty")]
+    [InlineData("GET", "same-site", "no-cors", "script")]
+    public async Task Requests_another_site_sends_are_refused(string method, string site, string mode, string dest)
+    {
+        using var client = factory.DashboardClient();
+        using var request = new HttpRequestMessage(new HttpMethod(method), "/api/status");
+        request.Headers.Add("Sec-Fetch-Site", site);
+        request.Headers.Add("Sec-Fetch-Mode", mode);
+        request.Headers.Add("Sec-Fetch-Dest", dest);
+        using var response = await client.SendAsync(request, TestContext.Current.CancellationToken);
+        response.StatusCode.ShouldBe(HttpStatusCode.Forbidden);
+        response.Content.Headers.ContentType!.MediaType.ShouldBe("application/problem+json");
+    }
+
+    // The dashboard's own requests, an address typed or opened from the tray, and clients that send no such header.
+    [Theory]
+    [InlineData("same-origin")]
+    [InlineData("none")]
+    [InlineData(null)]
+    public async Task The_dashboards_own_requests_are_let_through(string? site)
+    {
+        using var client = factory.DashboardClient();
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/api/status");
+        if (site is not null)
+            request.Headers.Add("Sec-Fetch-Site", site);
+        using var response = await client.SendAsync(request, TestContext.Current.CancellationToken);
+        response.StatusCode.ShouldBe(HttpStatusCode.OK);
+    }
+
     [Fact]
     public async Task Cross_origin_preflight_never_grants_access()
     {

@@ -32,8 +32,9 @@ public sealed class OllamaStatus(HttpClient http, OllamaSettings settings, TimeS
         {
             message = $"Ollama is not answering at {settings.Url}.";
         }
-        return new GemmaState(false, message, new ModelState(settings.VisionModel, false, false, false),
-            new ModelState(settings.EmbeddingModel, false, false, false));
+        // No model list: whether the models are pulled is unknown, so nothing may offer to pull them.
+        return new GemmaState(false, message, new ModelState(settings.VisionModel, null, false, false),
+            new ModelState(settings.EmbeddingModel, null, false, false));
     }
 
     private async Task<IReadOnlyList<JsonObject>> ModelsAsync(string path, CancellationToken ct)

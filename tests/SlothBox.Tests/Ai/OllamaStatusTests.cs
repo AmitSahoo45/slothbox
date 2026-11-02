@@ -96,8 +96,10 @@ public sealed class OllamaStatusTests
         state.Ready.ShouldBeTrue();
     }
 
+    // Not answering says nothing about the models, so their presence is unknown rather than "not pulled": the
+    // dashboard must not offer a 7 GB pull for a model that is already there.
     [Fact]
-    public async Task Ollama_not_answering_is_reported_with_its_address()
+    public async Task Ollama_not_answering_is_reported_with_its_address_and_the_models_unknown()
     {
         var down = new FakeOllama(_ => throw new HttpRequestException(HttpRequestError.ConnectionError,
             "No connection could be made because the target machine actively refused it."));
@@ -105,11 +107,12 @@ public sealed class OllamaStatusTests
         var state = await Status(down).CheckAsync(Ct);
 
         state.ShouldBe(new GemmaState(false, "Ollama is not answering at http://127.0.0.1:11436.",
-            new ModelState("gemma4:e4b", false, false, false), new ModelState("embeddinggemma", false, false, false)));
+            new ModelState("gemma4:e4b", null, false, false), new ModelState("embeddinggemma", null, false, false)));
+        state.Ready.ShouldBeFalse();
     }
 
     [Fact]
-    public async Task An_error_status_from_Ollama_is_not_ready()
+    public async Task An_error_status_from_Ollama_is_not_ready_and_lists_no_models()
     {
         var failing = new FakeOllama(_ => new HttpResponseMessage(HttpStatusCode.InternalServerError));
 
@@ -117,6 +120,7 @@ public sealed class OllamaStatusTests
 
         state.Reachable.ShouldBeFalse();
         state.Message.ShouldBe("Ollama at http://127.0.0.1:11436 answered with an error (500).");
+        (state.Vision.Present, state.Embedding.Present).ShouldBe((null, null));
     }
 
     // Accepts the connection and never answers.

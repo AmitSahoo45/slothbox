@@ -14,11 +14,12 @@ public sealed class FolderJobs(IFinishedPaths finished, TidyBatches tidy)
     public async Task RecordFinishedAsync(Job job, PipelineResult result, FileStamp? seen, CancellationToken ct)
     {
         var file = job.File;
-        // A filing that left the file in place (copy-only), or a file skipped for its ignored hash (an undone file).
-        // The sweep tries locked files and failures again; it never queues temporary, hidden, system or baseline
-        // files, and a skip for the folder's sake (switched off, removed) says nothing about the file.
-        if (seen is not { } stamp ||
-            result is not (PipelineResult.Filed or PipelineResult.Skipped { Reason: GateSkipReason.Ignored }))
+        // A filing that left the file in place (copy-only), a file skipped for its ignored hash (an undone file), or a
+        // copy-only original skipped because its filing already stands (its earlier job was cut short after the
+        // copy). The sweep tries locked files and failures again; it never queues temporary, hidden, system or
+        // baseline files, and a skip for the folder's sake (switched off, removed) says nothing about the file.
+        if (seen is not { } stamp || result is not (PipelineResult.Filed or PipelineResult.Skipped
+                { Reason: GateSkipReason.Ignored or GateSkipReason.AlreadyFiled }))
             return;
         // A folder job whose folder was removed meanwhile has no folder to be finished in.
         if (file.Origin == FileOrigin.Folder && file.WatchedFolderId is null)

@@ -136,13 +136,15 @@ test('browser folder and setup mutations persist and rotation changes the QR wit
 })
 
 test.each([
-  { pauseReason: 'drive_full', gemmaReady: true },
-  { pauseReason: 'gemma_offline', gemmaReady: false },
-] as const)('browser scenario starts paused for $pauseReason and Resume clears it', async ({ pauseReason, gemmaReady }) => {
+  { pauseReason: 'drive_full', gemmaReady: true, present: true },
+  { pauseReason: 'gemma_offline', gemmaReady: false, present: null },
+] as const)('browser scenario starts paused for $pauseReason and Resume clears it', async ({ pauseReason, gemmaReady, present }) => {
   server.use(...createBrowserHandlers({ pauseReason }))
-  expect(await (await fetch(`${base}/api/status`)).json()).toMatchObject({ paused: true, pauseReason, gemma: { ready: gemmaReady } })
+  expect(await (await fetch(`${base}/api/status`)).json()).toMatchObject({
+    paused: true, pauseReason, gemma: { ready: gemmaReady }, visionModel: { present }, embeddingModel: { present },
+  })
   const resumed = await fetch(`${base}/api/resume`, { method: 'POST', headers: { 'X-SlothBox': '1' } })
-  const cleared = { paused: false, pauseReason: null, gemma: { ready: true } }
+  const cleared = { paused: false, pauseReason: null, gemma: { ready: true }, embeddingModel: { present: true } }
   expect(await resumed.json()).toMatchObject(cleared)
   expect(await (await fetch(`${base}/api/status`)).json()).toMatchObject(cleared)
 })

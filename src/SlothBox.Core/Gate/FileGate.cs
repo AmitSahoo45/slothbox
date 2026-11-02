@@ -35,6 +35,12 @@ public sealed class FileGate(
             return new GateResult.Skip(GateSkipReason.System);
         if (file.WatchedFolderId is { } folderId && await folders.IsInBaselineAsync(folderId, path, ct))
             return new GateResult.Skip(GateSkipReason.Baseline);
+        // Still being written, though unchanged: Firefox writes a download to <name>.part and leaves an empty file
+        // under the final name until it is done, and other programs also create a file empty and write it later.
+        // Both wait like a locked file; a file still empty after the lock-retry window is a real empty file.
+        if (File.Exists(path + ".part") || (info.Length == 0 &&
+            DateTime.UtcNow - info.LastWriteTimeUtc < TimeSpan.FromMinutes(settings.LockRetryMinutes)))
+            return new GateResult.NotReady();
 
         var window = TimeSpan.FromSeconds(settings.StableSeconds);
         var seen = (info.Length, info.LastWriteTimeUtc);
@@ -66,6 +72,8 @@ public sealed class FileGate(
 
         if (await ignoredHashes.ContainsAsync(sha256, ct))
             return new GateResult.Skip(GateSkipReason.Ignored);
+        if (await files.WasCopiedFromAsync(sha256, path, ct))
+            return new GateResult.Skip(GateSkipReason.AlreadyFiled);
         var filed = await files.FindFiledByHashAsync(sha256, ct);
         return filed is null ? new GateResult.Ready(sha256) : new GateResult.Duplicate(filed.Id, sha256);
     }
