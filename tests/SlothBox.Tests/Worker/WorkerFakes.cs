@@ -118,6 +118,9 @@ internal sealed class ScriptedPipeline(List<string> sequence) : IFilePipeline
 {
     public List<Job> Runs { get; } = [];
 
+    // The token the latest run was given, so an answer can wait on it.
+    public CancellationToken LastToken { get; private set; }
+
     public Func<Job, PipelineResult> Answer { get; set; } =
         _ => throw new InvalidOperationException("No pipeline result was scripted for this test.");
 
@@ -136,6 +139,7 @@ internal sealed class ScriptedPipeline(List<string> sequence) : IFilePipeline
         {
             sequence.Add("run");
             Runs.Add(job);
+            LastToken = ct;
         }
         return Task.FromResult(Answer(job));
     }
